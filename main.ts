@@ -7,6 +7,7 @@ import {
     Plugin,
     PluginSettingTab,
     Setting,
+    SettingDefinitionItem,
     SuggestModal,
     TAbstractFile,
     TFile,
@@ -326,7 +327,7 @@ function globPatternToRegExp(pattern: string): RegExp {
             expression += "[^/]";
             continue;
         }
-        expression += /[\\^$+?.()|{}\[\]]/.test(character) ? `\\${character}` : character;
+        expression += /[\\^$+?.()|{}[\]]/.test(character) ? `\\${character}` : character;
     }
     return new RegExp(`${expression}$`);
 }
@@ -353,12 +354,12 @@ export default class FolderColumnNavigator extends Plugin {
             void this.activateView();
         });
         this.addCommand({
-            id: "open-folder-column-navigator",
+            id: "open",
             name: "打开目录文件列表",
             callback: () => void this.activateView()
         });
         this.addCommand({
-            id: "reveal-active-file-in-folder-column-navigator",
+            id: "reveal-active-file",
             name: "定位当前笔记",
             callback: () => this.views.forEach(view => view.revealActiveFile())
         });
@@ -1829,7 +1830,7 @@ class FolderColumnNavigatorView extends ItemView {
         const style = window.getComputedStyle(row);
         const horizontalPadding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
         const gap = parseFloat(style.columnGap || style.gap) || 0;
-        const children = Array.from(row.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+        const children = Array.from(row.children).filter((child): child is HTMLElement => child.instanceOf(HTMLElement));
         const contentWidth = children.reduce((total, child) => total + Math.ceil(child.scrollWidth), 0);
         return horizontalPadding + contentWidth + Math.max(0, children.length - 1) * gap;
     }
@@ -1880,7 +1881,7 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private handleKeyDown(event: KeyboardEvent): void {
-        const target = event.target instanceof HTMLElement ? event.target : null;
+        const target = event.targetNode?.instanceOf(HTMLElement) ? event.targetNode : null;
         if (!target) {
             return;
         }
@@ -1890,7 +1891,7 @@ class FolderColumnNavigatorView extends ItemView {
             this.clearFilter();
             return;
         }
-        if (target instanceof HTMLButtonElement || target instanceof HTMLSelectElement || target instanceof HTMLInputElement) {
+        if (target.instanceOf(HTMLButtonElement) || target.instanceOf(HTMLSelectElement) || target.instanceOf(HTMLInputElement)) {
             return;
         }
 
@@ -2039,7 +2040,7 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private handleFocusIn(event: FocusEvent): void {
-        const target = event.target instanceof HTMLElement ? event.target : null;
+        const target = event.targetNode?.instanceOf(HTMLElement) ? event.targetNode : null;
         const navigationRow = target?.closest<HTMLElement>('[data-fcn-row="navigation"]');
         if (navigationRow) {
             this.markKeyboardSelection(navigationRow);
@@ -2061,7 +2062,7 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private handlePointerDown(event: PointerEvent): void {
-        const target = event.target instanceof HTMLElement ? event.target : null;
+        const target = event.targetNode?.instanceOf(HTMLElement) ? event.targetNode : null;
         if (!target) {
             return;
         }
@@ -2072,7 +2073,7 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private handleBlankClick(event: MouseEvent): void {
-        const target = event.target instanceof HTMLElement ? event.target : null;
+        const target = event.targetNode?.instanceOf(HTMLElement) ? event.targetNode : null;
         if (!target || target.closest('[data-fcn-row], button, select, input, textarea, .fcn-resize-divider')) {
             return;
         }
@@ -2445,261 +2446,266 @@ class FolderColumnNavigatorView extends ItemView {
 
 class FolderColumnNavigatorSettingTab extends PluginSettingTab {
     private readonly plugin: FolderColumnNavigatorPlugin;
-    private activeTab: "navigation" | "appearance" | "advanced" = "navigation";
 
     constructor(app: FolderColumnNavigatorPlugin["app"], plugin: FolderColumnNavigatorPlugin) {
         super(app, plugin);
         this.plugin = plugin;
     }
 
-    display(): void {
-        const { containerEl } = this;
-        containerEl.empty();
-        containerEl.createEl("h2", { text: "目录文件列表" });
-        containerEl.createEl("p", {
-            text: "左侧默认显示仓库根目录和所有一级目录。隐藏只影响快捷列，不会删除仓库内容；自定义目录可以是任意层级。"
-        });
-
-        const tabs = containerEl.createDiv("fcn-settings-tabs");
-        ([
-            ["navigation", "导航"],
-            ["appearance", "显示"],
-            ["advanced", "高级"]
-        ] as const).forEach(([id, label]) => {
-            const tab = tabs.createEl("button", { text: label, cls: "fcn-settings-tab", attr: { type: "button" } });
-            tab.toggleClass("is-active", this.activeTab === id);
-            tab.addEventListener("click", () => {
-                this.activeTab = id;
-                this.display();
-            });
-        });
-        const contentEl = containerEl.createDiv("fcn-settings-content");
-        const showNavigation = this.activeTab === "navigation";
-        const showAppearance = this.activeTab === "appearance";
-        const showAdvanced = this.activeTab === "advanced";
-
-        if (showNavigation) {
-        new Setting(contentEl)
-            .setName("一级目录置顶展示")
-            .setDesc("将一级目录放到顶部网格区域，下面保留当前目录的多级展开区域。")
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showRootFoldersAtTop)
-                .onChange(value => {
-                    this.plugin.settings.showRootFoldersAtTop = value;
-                    void this.plugin.saveSettings().then(() => this.display());
-                }));
-
-        new Setting(contentEl)
-            .setName("顶部默认展示行数")
-            .setDesc("顶部一级目录超过这个行数后，点击展开按钮查看更多目录。")
-            .addSlider(slider => slider
-                .setLimits(1, 8, 1)
-                .setValue(this.plugin.settings.rootFolderVisibleRows)
-                .setDynamicTooltip()
-                .onChange(value => {
-                    this.plugin.settings.rootFolderVisibleRows = value;
-                    void this.plugin.saveSettings();
-                }));
-        }
-
-        if (showAppearance) {
-        new Setting(contentEl)
-            .setName("显示条目元信息")
-            .setDesc("在目录右侧显示子文件和子目录数量，在文件右侧显示文件类型。")
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showItemMetadata)
-                .onChange(value => {
-                    this.plugin.settings.showItemMetadata = value;
-                    void this.plugin.saveSettings();
-                }));
-
-        new Setting(contentEl)
-            .setName("一级目录名称字号")
-            .setDesc("调整左侧模式下一级目录的文字大小。顶部目录标签使用“文件树文件名字号”。")
-            .addSlider(slider => slider
-                .setLimits(MIN_ITEM_FONT_SIZE, MAX_ITEM_FONT_SIZE, 1)
-                .setValue(this.plugin.settings.rootFolderFontSize)
-                .setDynamicTooltip()
-                .onChange(value => {
-                    this.plugin.settings.rootFolderFontSize = value;
-                    void this.plugin.saveSettings();
-                }));
-
-        new Setting(contentEl)
-            .setName("文件树文件名字号")
-            .setDesc("调整右侧文件树中的目录和文件名称；顶部模式下也用于一级目录标签。")
-            .addSlider(slider => slider
-                .setLimits(MIN_ITEM_FONT_SIZE, MAX_ITEM_FONT_SIZE, 1)
-                .setValue(this.plugin.settings.fileNameFontSize)
-                .setDynamicTooltip()
-                .onChange(value => {
-                    this.plugin.settings.fileNameFontSize = value;
-                    void this.plugin.saveSettings();
-                }));
-
-        new Setting(contentEl)
-            .setName("文件树名称左对齐")
-            .setDesc("文件未显示图标而文件夹显示图标时，为文件保留图标位置，使目录和文件名称左对齐。")
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.alignFileTreeNames)
-                .onChange(value => {
-                    this.plugin.settings.alignFileTreeNames = value;
-                    void this.plugin.saveSettings();
-                }));
-
-        new Setting(contentEl)
-            .setName("文件夹笔记优先显示")
-            .setDesc("当前目录下与目录同名的文件会被视为文件夹笔记，并始终排在最前面。")
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showFolderNotes)
-                .onChange(value => {
-                    this.plugin.settings.showFolderNotes = value;
-                    void this.plugin.saveSettings();
-                }));
-
-        new Setting(contentEl)
-            .setName("隐藏文件后缀名")
-            .setDesc("文件列表只显示文件基础名称；右侧类型缩写仍由“显示条目元信息”控制。")
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.hideFileExtensions)
-                .onChange(value => {
-                    this.plugin.settings.hideFileExtensions = value;
-                    void this.plugin.saveSettings();
-                }));
-        }
-
-        if (showAdvanced) {
-        new Setting(contentEl)
-            .setName("隐藏规则")
-            .setDesc("每行一条相对仓库根目录的 Glob 规则，支持 *、?、**。例如：附件/**、**/*.tmp、草稿/*.md；命中目录会同时隐藏其子项。")
-            .addTextArea(textArea => {
-                textArea.setPlaceholder("附件/**\n**/*.tmp");
-                textArea.setValue(this.plugin.settings.hiddenPatterns.join("\n"));
-                textArea.inputEl.rows = 5;
-                textArea.onChange(value => {
-                    this.plugin.settings.hiddenPatterns = cleanGlobPatternList(value.split(/\r?\n/));
-                    void this.plugin.saveSettings();
-                });
-            });
-
-        new Setting(contentEl)
-            .setName("文件列最小宽度")
-            .setDesc("拖动文件列时允许缩小到的最小宽度，默认 120px。")
-            .addSlider(slider => slider
-                .setLimits(MIN_CONFIGURABLE_COLUMN_WIDTH, MAX_CONFIGURABLE_COLUMN_WIDTH, 10)
-                .setValue(this.plugin.settings.columnMinWidth)
-                .setDynamicTooltip()
-                .onChange(value => {
-                    this.plugin.settings.columnMinWidth = value;
-                    this.plugin.settings.columnMaxWidth = Math.max(value, this.plugin.settings.columnMaxWidth);
-                    void this.plugin.saveSettings();
-                }));
-
-        new Setting(contentEl)
-            .setName("文件列最大宽度")
-            .setDesc("拖动文件列时允许放大到的最大宽度，默认 400px。")
-            .addSlider(slider => slider
-                .setLimits(MIN_CONFIGURABLE_COLUMN_WIDTH, MAX_CONFIGURABLE_COLUMN_WIDTH, 10)
-                .setValue(this.plugin.settings.columnMaxWidth)
-                .setDynamicTooltip()
-                .onChange(value => {
-                    this.plugin.settings.columnMaxWidth = Math.max(value, this.plugin.settings.columnMinWidth);
-                    void this.plugin.saveSettings();
-                }));
-        new Setting(contentEl)
-            .setName("显示扩展菜单项")
-            .setDesc("关闭后仅显示本插件自带的右键操作，不再触发 file-menu 扩展事件添加的菜单项。")
-            .addToggle(toggle => toggle
-                .setValue(this.plugin.settings.showExtensionMenuItems)
-                .onChange(value => {
-                    this.plugin.settings.showExtensionMenuItems = value;
-                    void this.plugin.saveSettings();
-                }));
-        }
-
-        if (showAppearance) {
-        new Setting(contentEl)
-            .setName("文件夹图标")
-            .setDesc("可保留文件夹图标、显示右箭头（>）或完全隐藏。")
-            .addDropdown(dropdown => dropdown
-                .addOptions({ folder: "文件夹", chevron: "右箭头（>）", none: "不显示" })
-                .setValue(this.plugin.settings.folderIconStyle)
-                .onChange(value => {
-                    if (isFolderIconStyle(value)) {
-                        this.plugin.settings.folderIconStyle = value;
-                        void this.plugin.saveSettings();
+    getSettingDefinitions(): SettingDefinitionItem[] {
+        return [
+            {
+                type: "page",
+                name: "导航",
+                desc: "一级目录、置顶展示和自定义目录。",
+                items: [
+                    {
+                        name: "一级目录置顶展示",
+                        desc: "将一级目录放到顶部标签区域，下面保留当前目录的多级展开区域。",
+                        control: { type: "toggle", key: "showRootFoldersAtTop" }
+                    },
+                    {
+                        name: "顶部默认展示行数",
+                        desc: "顶部一级目录超过这个行数后，点击展开按钮查看更多目录。",
+                        visible: () => this.plugin.settings.showRootFoldersAtTop,
+                        control: {
+                            type: "slider",
+                            key: "rootFolderVisibleRows",
+                            min: 1,
+                            max: 8,
+                            step: 1,
+                            displayFormat: value => `${value} 行`
+                        }
+                    },
+                    {
+                        name: "添加自定义目录",
+                        desc: "例如：工作/项目，路径必须存在于当前仓库。",
+                        render: setting => {
+                            let inputValue = "";
+                            setting.addText(text => text
+                                .setPlaceholder("工作/项目")
+                                .onChange(value => {
+                                    inputValue = value;
+                                }))
+                                .addButton(button => button.setButtonText("添加").setCta().onClick(() => {
+                                    void this.plugin.addCustomFolder(inputValue).then(added => {
+                                        if (added) {
+                                            this.update();
+                                        }
+                                    });
+                                }));
+                        }
+                    },
+                    {
+                        type: "group",
+                        heading: "一级目录",
+                        items: this.plugin.getRootFolders().map(folder => ({
+                            name: folder.name,
+                            desc: folder.path,
+                            render: setting => {
+                                setting
+                                    .addButton(button => button
+                                        .setButtonText(this.plugin.isPinned(folder.path) ? "取消置顶" : "置顶")
+                                        .onClick(() => void this.plugin.togglePinned(folder.path).then(() => this.update())))
+                                    .addButton(button => button
+                                        .setButtonText(this.plugin.settings.hiddenRootPaths.includes(folder.path) ? "显示" : "隐藏")
+                                        .onClick(() => void this.plugin.toggleHiddenRoot(folder.path).then(() => this.update())));
+                            }
+                        }))
+                    },
+                    {
+                        type: "group",
+                        heading: "自定义目录",
+                        items: this.plugin.settings.customFolders.map(path => {
+                            const folder = this.plugin.getFolder(path);
+                            return {
+                                name: folder?.name ?? path,
+                                desc: path,
+                                render: setting => {
+                                    setting
+                                        .addText(text => text
+                                            .setPlaceholder("显示名称")
+                                            .setValue(this.plugin.settings.customFolderNames[path] ?? "")
+                                            .onChange(value => void this.plugin.updateCustomFolderDisplayName(path, value)))
+                                        .addButton(button => button
+                                            .setButtonText(this.plugin.isPinned(path) ? "取消置顶" : "置顶")
+                                            .onClick(() => void this.plugin.togglePinned(path).then(() => this.update())))
+                                        .addExtraButton(button => button
+                                            .setIcon("trash")
+                                            .setTooltip("移除自定义目录")
+                                            .onClick(() => void this.plugin.removeCustomFolder(path).then(() => this.update())));
+                                }
+                            };
+                        })
                     }
-                }));
-
-        new Setting(contentEl)
-            .setName("文件图标")
-            .setDesc("可保留通用文件图标、按常见文件类型显示图标或完全隐藏。")
-            .addDropdown(dropdown => dropdown
-                .addOptions({ file: "通用文件", type: "按文件类型", none: "不显示" })
-                .setValue(this.plugin.settings.fileIconStyle)
-                .onChange(value => {
-                    if (isFileIconStyle(value)) {
-                        this.plugin.settings.fileIconStyle = value;
-                        void this.plugin.saveSettings();
+                ]
+            },
+            {
+                type: "page",
+                name: "显示",
+                desc: "文件树信息、文字和图标。",
+                items: [
+                    {
+                        name: "显示条目元信息",
+                        desc: "在目录右侧显示子文件和子目录数量，在文件右侧显示文件类型。",
+                        control: { type: "toggle", key: "showItemMetadata" }
+                    },
+                    {
+                        name: "一级目录名称字号",
+                        desc: "调整左侧模式下一级目录的文字大小。顶部目录标签使用“文件树文件名字号”。",
+                        control: this.itemFontSlider("rootFolderFontSize")
+                    },
+                    {
+                        name: "文件树文件名字号",
+                        desc: "调整右侧文件树中的目录和文件名称；顶部模式下也用于一级目录标签。",
+                        control: this.itemFontSlider("fileNameFontSize")
+                    },
+                    {
+                        name: "文件树名称左对齐",
+                        desc: "文件未显示图标而文件夹显示图标时，为文件保留图标位置，使目录和文件名称左对齐。",
+                        control: { type: "toggle", key: "alignFileTreeNames" }
+                    },
+                    {
+                        name: "文件夹笔记优先显示",
+                        desc: "当前目录下与目录同名的文件会被视为文件夹笔记，并始终排在最前面。",
+                        control: { type: "toggle", key: "showFolderNotes" }
+                    },
+                    {
+                        name: "隐藏文件后缀名",
+                        desc: "文件列表只显示文件基础名称；右侧类型缩写仍由“显示条目元信息”控制。",
+                        control: { type: "toggle", key: "hideFileExtensions" }
+                    },
+                    {
+                        name: "文件夹图标",
+                        desc: "可保留文件夹图标、显示右箭头（>）或完全隐藏。",
+                        control: {
+                            type: "dropdown",
+                            key: "folderIconStyle",
+                            options: { folder: "文件夹", chevron: "右箭头（>）", none: "不显示" }
+                        }
+                    },
+                    {
+                        name: "文件图标",
+                        desc: "可保留通用文件图标、按常见文件类型显示图标或完全隐藏。",
+                        control: {
+                            type: "dropdown",
+                            key: "fileIconStyle",
+                            options: { file: "通用文件", type: "按文件类型", none: "不显示" }
+                        }
                     }
-                }));
-        }
-
-        if (showNavigation) {
-        let inputValue = "";
-        new Setting(contentEl)
-            .setName("添加自定义目录")
-            .setDesc("例如：工作/项目，路径必须存在于当前仓库。")
-            .addText(text => {
-                text.setPlaceholder("工作/项目");
-                text.onChange(value => {
-                    inputValue = value;
-                });
-            })
-            .addButton(button => button.setButtonText("添加").setCta().onClick(() => {
-                void this.plugin.addCustomFolder(inputValue).then(added => {
-                    if (added) {
-                        inputValue = "";
-                        this.display();
+                ]
+            },
+            {
+                type: "page",
+                name: "高级",
+                desc: "隐藏规则、列宽与右键菜单。",
+                items: [
+                    {
+                        name: "隐藏规则",
+                        desc: "每行一条相对仓库根目录的 Glob 规则，支持 *、?、**。例如：附件/**、**/*.tmp、草稿/*.md；命中目录会同时隐藏其子项。",
+                        control: {
+                            type: "textarea",
+                            key: "hiddenPatternsText",
+                            placeholder: "附件/**\n**/*.tmp"
+                        }
+                    },
+                    {
+                        name: "文件列最小宽度",
+                        desc: "拖动文件列时允许缩小到的最小宽度，默认 120px。",
+                        control: this.columnWidthSlider("columnMinWidth")
+                    },
+                    {
+                        name: "文件列最大宽度",
+                        desc: "拖动文件列时允许放大到的最大宽度，默认 400px。",
+                        control: this.columnWidthSlider("columnMaxWidth")
+                    },
+                    {
+                        name: "显示扩展菜单项",
+                        desc: "关闭后仅显示本插件自带的右键操作，不再触发 file-menu 扩展事件添加的菜单项。",
+                        control: { type: "toggle", key: "showExtensionMenuItems" }
                     }
-                });
-            }));
+                ]
+            }
+        ];
+    }
 
-        contentEl.createEl("h3", { text: "一级目录" });
-        this.plugin.getRootFolders().forEach(folder => {
-            new Setting(contentEl)
-                .setName(folder.name)
-                .setDesc(folder.path)
-                .addButton(button => button
-                    .setButtonText(this.plugin.isPinned(folder.path) ? "取消置顶" : "置顶")
-                    .onClick(() => void this.plugin.togglePinned(folder.path).then(() => this.display())))
-                .addButton(button => button
-                    .setButtonText(this.plugin.settings.hiddenRootPaths.includes(folder.path) ? "显示" : "隐藏")
-                    .onClick(() => void this.plugin.toggleHiddenRoot(folder.path).then(() => this.display())));
-        });
+    getControlValue(key: string): unknown {
+        if (key === "hiddenPatternsText") {
+            return this.plugin.settings.hiddenPatterns.join("\n");
+        }
+        return this.plugin.settings[key as keyof FolderColumnNavigatorSettings];
+    }
 
-        contentEl.createEl("h3", { text: "自定义目录" });
-        if (this.plugin.settings.customFolders.length === 0) {
-            contentEl.createEl("p", { text: "还没有自定义目录。" });
+    async setControlValue(key: string, value: unknown): Promise<void> {
+        switch (key) {
+            case "showRootFoldersAtTop":
+            case "alignFileTreeNames":
+            case "showFolderNotes":
+            case "hideFileExtensions":
+            case "showItemMetadata":
+            case "showExtensionMenuItems":
+                this.plugin.settings[key] = Boolean(value);
+                break;
+            case "rootFolderVisibleRows":
+                this.plugin.settings.rootFolderVisibleRows = Math.max(1, Math.min(8, Math.round(Number(value))));
+                break;
+            case "rootFolderFontSize":
+                this.plugin.settings.rootFolderFontSize = clampItemFontSize(value, DEFAULT_ROOT_FOLDER_FONT_SIZE);
+                break;
+            case "fileNameFontSize":
+                this.plugin.settings.fileNameFontSize = clampItemFontSize(value, DEFAULT_FILE_NAME_FONT_SIZE);
+                break;
+            case "folderIconStyle":
+                if (isFolderIconStyle(value)) {
+                    this.plugin.settings.folderIconStyle = value;
+                }
+                break;
+            case "fileIconStyle":
+                if (isFileIconStyle(value)) {
+                    this.plugin.settings.fileIconStyle = value;
+                }
+                break;
+            case "hiddenPatternsText":
+                this.plugin.settings.hiddenPatterns = cleanGlobPatternList(String(value).split(/\r?\n/));
+                break;
+            case "columnMinWidth": {
+                const minimum = clampConfigurableColumnWidth(value, DEFAULT_COLUMN_MIN_WIDTH);
+                this.plugin.settings.columnMinWidth = minimum;
+                this.plugin.settings.columnMaxWidth = Math.max(minimum, this.plugin.settings.columnMaxWidth);
+                break;
+            }
+            case "columnMaxWidth":
+                this.plugin.settings.columnMaxWidth = Math.max(
+                    this.plugin.settings.columnMinWidth,
+                    clampConfigurableColumnWidth(value, DEFAULT_COLUMN_MAX_WIDTH)
+                );
+                break;
+            default:
+                return;
         }
-        this.plugin.settings.customFolders.forEach(path => {
-            const folder = this.plugin.getFolder(path);
-            new Setting(contentEl)
-                .setName(folder?.name ?? path)
-                .setDesc(path)
-                .addText(text => {
-                    text.setPlaceholder("显示名称");
-                    text.setValue(this.plugin.settings.customFolderNames[path] ?? "");
-                    text.onChange(value => void this.plugin.updateCustomFolderDisplayName(path, value));
-                })
-                .addButton(button => button
-                    .setButtonText(this.plugin.isPinned(path) ? "取消置顶" : "置顶")
-                    .onClick(() => void this.plugin.togglePinned(path).then(() => this.display())))
-                .addExtraButton(button => button
-                    .setIcon("trash")
-                    .setTooltip("移除自定义目录")
-                    .onClick(() => void this.plugin.removeCustomFolder(path).then(() => this.display())));
-        });
-        }
+        await this.plugin.saveSettings();
+        this.refreshDomState();
+    }
+
+    private itemFontSlider(key: "rootFolderFontSize" | "fileNameFontSize") {
+        return {
+            type: "slider" as const,
+            key,
+            min: MIN_ITEM_FONT_SIZE,
+            max: MAX_ITEM_FONT_SIZE,
+            step: 1,
+            displayFormat: (value: number) => `${value}px`
+        };
+    }
+
+    private columnWidthSlider(key: "columnMinWidth" | "columnMaxWidth") {
+        return {
+            type: "slider" as const,
+            key,
+            min: MIN_CONFIGURABLE_COLUMN_WIDTH,
+            max: MAX_CONFIGURABLE_COLUMN_WIDTH,
+            step: 10,
+            displayFormat: (value: number) => `${value}px`
+        };
     }
 }

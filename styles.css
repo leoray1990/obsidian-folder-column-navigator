@@ -78,10 +78,14 @@
     background: var(--interactive-accent);
 }
 
-.fcn-is-resizing,
-.fcn-is-resizing * {
-    cursor: col-resize !important;
-    user-select: none !important;
+.fcn-is-resizing {
+    cursor: col-resize;
+    user-select: none;
+}
+
+.fcn-is-resizing :is(button, input, select, textarea, .fcn-navigation-item, .fcn-file-item, .fcn-root-folder-item) {
+    cursor: col-resize;
+    user-select: none;
 }
 
 .fcn-pane-header,
@@ -128,21 +132,20 @@
     color: var(--text-normal);
 }
 
-.fcn-filter-badge {
+.folder-column-navigator-view .fcn-filter-badge {
     max-width: 45%;
     margin-left: auto;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     min-height: 0;
-    padding: 0 6px !important;
+    padding: 0 6px;
     color: var(--text-accent);
-    background: transparent !important;
-    background-color: transparent !important;
+    background: transparent;
     appearance: none;
-    border: 0 !important;
+    border: 0;
     border-radius: 0;
-    box-shadow: none !important;
+    box-shadow: none;
     cursor: pointer;
     font: inherit;
     font-size: var(--font-ui-smaller);
@@ -316,7 +319,6 @@
 }
 
 .fcn-root-folder-item:hover {
-    background: rgba(59, 130, 246, 0.1);
     background: color-mix(in srgb, var(--interactive-accent) 12%, var(--background-primary));
     color: var(--text-normal);
 }
@@ -464,7 +466,6 @@
 }
 
 .fcn-root-folder-item.is-root-folder-keyboard-selected:not(.is-selected) {
-    background: rgba(59, 130, 246, 0.16);
     background: color-mix(in srgb, var(--interactive-accent) 20%, var(--background-primary));
     color: var(--interactive-accent);
 }
@@ -476,7 +477,6 @@
 }
 
 .fcn-root-folder-item.is-selected.is-root-folder-keyboard-selected {
-    background: var(--interactive-accent-hover);
     background: color-mix(in srgb, var(--interactive-accent) 68%, #000);
 }
 
