@@ -1,0 +1,10 @@
+{
+  "id": "folder-column-navigator",
+  "name": "Folder Column Navigator",
+  "version": "1.0.0",
+  "minAppVersion": "1.5.0",
+  "description": "Finder-style multi-column folder and file navigator for Obsidian.",
+  "author": "Leoray",
+  "authorUrl": "https://github.com/leoray1990",
+  "isDesktopOnly": false
+}

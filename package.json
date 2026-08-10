@@ -1,0 +1,19 @@
+{
+  "name": "folder-column-navigator",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "dev": "node esbuild.config.mjs"
+  },
+  "dependencies": {
+    "pinyin-pro": "^3.28.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.42",
+    "builtin-modules": "^3.3.0",
+    "esbuild": "^0.28.2",
+    "obsidian": "^1.13.0",
+    "typescript": "^5.9.3"
+  }
+}
