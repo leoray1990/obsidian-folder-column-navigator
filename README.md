@@ -16,6 +16,38 @@ Use a Finder-style, multi-column file navigator inside Obsidian. Browse folders 
 - Built-in file and folder context menus, plus compatibility with other plugins through Obsidian's `file-menu` event.
 - Immediate duplicate-name validation when creating or renaming files and folders.
 
+## Screenshots / 截图
+
+### Top-level tags / 顶部一级目录标签
+
+Use the top layout to dedicate the entire lower area to the file tree while keeping root folders one click away.
+
+![Top-level folders displayed as tags](images/top-layout-tags.png)
+
+### Left navigation / 左侧一级目录列
+
+Keep root folders pinned on the left, with the selected folder and its child columns visible together.
+
+![Left-side root-folder navigation](images/left-layout-navigation.png)
+
+### Finder-style columns / Finder 风格多列浏览
+
+Open each folder in its own column to retain the complete path and browse several levels in context.
+
+![Multiple folder columns open side by side](images/finder-multi-column.png)
+
+### Pinyin filtering / 拼音筛选
+
+Type English, numbers, Chinese text, pinyin initials, full pinyin, or mixed pinyin to filter the focused column.
+
+![Filtering a folder column with a pinyin query](images/pinyin-filtering.png)
+
+### Context menu / 右键菜单
+
+File and folder actions are available from the context menu, which also supports keyboard filtering.
+
+![Folder context menu with keyboard filtering](images/context-menu.png)
+
 ## Installation
 
 ### From the community plugins directory
