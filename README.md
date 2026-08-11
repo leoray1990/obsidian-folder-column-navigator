@@ -2,16 +2,24 @@
 
 [中文](#中文说明) · [English](#english)
 
-Use a Finder-style, multi-column file navigator inside Obsidian. Browse folders in context, jump between top-level areas quickly, and open notes without leaving the navigator.
+Keyboard-first Finder-style, multi-column file navigation. Browse folders in context, jump between top-level areas quickly, and open notes without leaving the navigator.
 
 > This plugin works entirely inside your vault. It does not send data over the network and does not collect telemetry.
+
+## Keyboard flow & pinyin filtering / 键盘流与拼音快速过滤
+
+- Move naturally with `↑` `↓` `←` `→`; use `Enter` to open a folder or note, and `Space` to open its context menu.
+- Type directly in the focused folder area or file column to filter—no search box required.
+- Filtering supports English, numbers, Chinese characters, pinyin initials, full pinyin, and mixed pinyin. For example, both `nh` and `nih` can match “你好”.
+- While filtering, arrow keys move only between matching items. `Backspace` removes one character and `Esc` clears the filter.
+- Opening a note keeps keyboard focus in the navigator, so you can continue browsing immediately.
 
 ## Highlights
 
 - Two layouts: a left-hand root-folder list or root folders displayed as top tags.
 - Finder-style column browsing: opening a folder adds a column for its direct children.
-- Fast keyboard navigation, with the focus staying in the navigator after opening a note.
-- Per-column filtering with English, numbers, Chinese characters, pinyin initials, full pinyin, and mixed pinyin queries.
+- Keyboard-first navigation across root folders, file columns, and filterable context menus.
+- Per-column pinyin-aware filtering for English, numbers, Chinese characters, initials, full pinyin, and mixed pinyin queries.
 - File-list-like sorting, item metadata, configurable icons, font sizes, widths, and hiding rules.
 - Built-in file and folder context menus, plus compatibility with other plugins through Obsidian's `file-menu` event.
 - Immediate duplicate-name validation when creating or renaming files and folders.
@@ -50,7 +58,9 @@ File and folder actions are available from the context menu, which also supports
 
 ## Installation
 
-### From the community plugins directory
+### Community Plugins
+
+Once the plugin is available in the Community Plugins directory:
 
 1. Open **Settings → Community plugins**.
 2. Search for **Folder Column Navigator**.
@@ -68,6 +78,15 @@ Open the view from the ribbon folder icon, or run **Open Folder Column Navigator
 ---
 
 # 中文说明
+
+## 键盘流与拼音快速过滤
+
+这是一个键盘优先的目录浏览器：焦点位于一级目录或任一文件列时，无需打开搜索框，直接输入即可筛选当前区域。
+
+- `↑` / `↓` 在当前区域移动，`←` / `→` 在父列、子列之间移动，`Enter` 进入目录或打开笔记。
+- 支持英文、数字、汉字、拼音首字母、全拼和混合拼音；例如 `nh`、`nih` 都可以匹配“你好”。
+- 筛选后，方向键只会在命中项中移动；`Backspace` 删除一个筛选字符，`Esc` 清除筛选。
+- 打开笔记后焦点仍留在插件内，可继续移动并打开其他笔记；`Space` 可打开当前项目的右键菜单。
 
 ## 它解决什么问题
 
@@ -128,7 +147,7 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 
 支持 `*`、`?` 和 `**`。命中目录后，其子项也会一并隐藏；这只影响插件视图，不会删除或移动任何仓库文件。
 
-### 拼音与数字筛选
+### 筛选细节
 
 当前焦点位于一级目录或任一文件列时，直接输入即可筛选该区域：
 
@@ -170,13 +189,13 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 
 文件夹菜单提供：新建笔记、新建子文件夹、新建白板、新建数据库、移动等操作。
 
-插件默认触发 Obsidian 的 `file-menu` 扩展事件，因此其他插件加入的标准文件菜单项也会出现在这里，例如“在访达中显示”。如需精简菜单，可在“高级”设置中关闭“显示扩展菜单项”；关闭后仍保留本插件自带操作。菜单打开后同样支持输入字母/数字筛选、方向键移动和 `Enter` 执行。
+插件会兼容其他插件加入的标准文件菜单项；如需精简菜单，可在“高级”设置中关闭“显示扩展菜单项”，关闭后仍保留本插件自带操作。菜单打开后同样支持输入字母/数字筛选、方向键移动和 `Enter` 执行。
 
 新建笔记、子文件夹、白板、数据库和重命名时，会在输入过程中实时检查目标目录是否已有同名文件或文件夹。出现冲突会立即提示并禁用确认按钮。
 
 ## 设置说明
 
-设置页按 **导航**、**显示**、**高级** 三个 Tab 分类。
+设置页按 **导航**、**显示**、**高级** 三个分类页面整理，并支持 Obsidian 设置搜索。
 
 | 设置 | 作用 |
 | --- | --- |
@@ -201,25 +220,6 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 - 只通过 Obsidian API 读取并在需要时执行你主动触发的本地文件操作。
 - 隐藏、排序、布局、宽度和导航配置保存在当前仓库的插件数据中。
 
-## 开发
-
-```bash
-npm install
-npm run build
-```
-
-构建后的 `main.js`、`manifest.json` 和 `styles.css` 可直接用于本地安装或作为 GitHub Release 附件。
-
-## 发布前检查
-
-社区市场要求仓库根目录包含用途与使用方式清晰的 `README.md`、`LICENSE` 和有效的 `manifest.json`；发布版本时，GitHub Release 的标签必须与 `manifest.json` 的版本一致，并附带 `main.js`、`manifest.json` 和 `styles.css`。详情见 [Obsidian 官方提交指南](https://docs.obsidian.md/Plugins/Releasing/Submit%20your%20plugin)。
-
-当前仓库在提交前还需要补齐：
-
-- `manifest.json` 中的 `author`（官方必填）。
-- 开源许可证文件 `LICENSE`。
-- 面向社区市场的最终英文展示名称与描述确认。
-
 ---
 
 # English
@@ -230,18 +230,19 @@ Folder Column Navigator adds a Finder-style multi-column navigator to Obsidian. 
 
 ## Key features
 
+- Keyboard-first navigation with `↑` `↓` `←` `→`, `Enter`, and `Space`; focus remains in the navigator after opening a note.
+- Pinyin-aware quick filtering: type directly in the focused area to match English, numbers, Chinese, initials, full pinyin, or mixed pinyin.
 - Left-side root-folder navigation or top-level folder tags.
 - Finder-style multi-column folder browsing with resizable columns.
 - Single-click file opening while keeping keyboard focus in the navigator.
 - Name, modified-time, and created-time sorting in ascending or descending order.
-- Pinyin-aware filtering for English, numbers, Chinese text, pinyin initials, full pinyin, and mixed pinyin.
 - Configurable item metadata, icons, font sizes, folder-note priority, extension visibility, and Glob-based hiding.
-- Keyboard navigation and filterable context menus for files and folders.
+- Filterable context menus for files and folders.
 - Immediate duplicate-name validation when creating or renaming files and folders.
 
 ## Quick use
 
-Open **Folder Column Navigator** from the ribbon or command palette. Click a folder to open its child column; click a file to open it. Use arrow keys to move, `Enter` to open, `Space` for the context menu, and type to filter the focused area.
+Open **Folder Column Navigator** from the ribbon or command palette. Click a folder to open its child column; click a file to open it. Use arrow keys to move, `Enter` to open, `Space` for the context menu, and type to filter the focused area. `Backspace` and `Esc` clear the active filter.
 
 ## Privacy
 
