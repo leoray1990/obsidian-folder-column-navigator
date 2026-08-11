@@ -2,17 +2,11 @@
 
 [中文](#中文说明) · [English](#english)
 
-Keyboard-first Finder-style, multi-column file navigation. Browse folders in context, jump between top-level areas quickly, and open notes without leaving the navigator.
+Folder Column Navigator is a Finder-style, multi-column file navigator for Obsidian. It keeps top-level folders within reach and opens each folder level in its own column, so you can browse deeply while preserving context.
+
+It is built for fast keyboard browsing: use `↑` `↓` `←` `→` to move, `Enter` to open folders or notes, and `Space` for the context menu. Type directly in the focused folder area or file column to filter—no search box required. Filtering supports English, numbers, Chinese characters, pinyin initials, full pinyin, and mixed pinyin; for example, both `nh` and `nih` can match “你好”. Opening a note keeps keyboard focus in the navigator, so you can continue browsing immediately.
 
 > This plugin works entirely inside your vault. It does not send data over the network and does not collect telemetry.
-
-## Keyboard flow & pinyin filtering / 键盘流与拼音快速过滤
-
-- Move naturally with `↑` `↓` `←` `→`; use `Enter` to open a folder or note, and `Space` to open its context menu.
-- Type directly in the focused folder area or file column to filter—no search box required.
-- Filtering supports English, numbers, Chinese characters, pinyin initials, full pinyin, and mixed pinyin. For example, both `nh` and `nih` can match “你好”.
-- While filtering, arrow keys move only between matching items. `Backspace` removes one character and `Esc` clears the filter.
-- Opening a note keeps keyboard focus in the navigator, so you can continue browsing immediately.
 
 ## Highlights
 
@@ -78,6 +72,12 @@ Open the view from the ribbon folder icon, or run **Open Folder Column Navigator
 ---
 
 # 中文说明
+## 它解决什么问题
+
+Obsidian 自带文件列表适合查看完整目录树，但在层级较深的仓库里，频繁展开、收起和横向寻找目录会打断阅读节奏。
+
+目录文件列表将常用的一级目录集中到一个导航区域，并在右侧以 Finder 风格逐列展开目录。你可以一边保留上级目录上下文，一边继续深入文件夹；打开笔记后，焦点仍留在插件中，适合连续浏览和整理笔记。
+
 
 ## 键盘流与拼音快速过滤
 
@@ -88,11 +88,6 @@ Open the view from the ribbon folder icon, or run **Open Folder Column Navigator
 - 筛选后，方向键只会在命中项中移动；`Backspace` 删除一个筛选字符，`Esc` 清除筛选。
 - 打开笔记后焦点仍留在插件内，可继续移动并打开其他笔记；`Space` 可打开当前项目的右键菜单。
 
-## 它解决什么问题
-
-Obsidian 自带文件列表适合查看完整目录树，但在层级较深的仓库里，频繁展开、收起和横向寻找目录会打断阅读节奏。
-
-目录文件列表将常用的一级目录集中到一个导航区域，并在右侧以 Finder 风格逐列展开目录。你可以一边保留上级目录上下文，一边继续深入文件夹；打开笔记后，焦点仍留在插件中，适合连续浏览和整理笔记。
 
 ## 主要功能
 
