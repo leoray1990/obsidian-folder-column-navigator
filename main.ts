@@ -273,8 +273,9 @@ class FolderDestinationModal extends SuggestModal<TFolder> {
     }
 
     getSuggestions(query: string): TFolder[] {
-        return this.app.vault.getAllLoadedFiles()
+        return [this.app.vault.getRoot(), ...this.app.vault.getAllLoadedFiles()]
             .filter((item): item is TFolder => item instanceof TFolder)
+            .filter((folder, index, folders) => folders.findIndex(candidate => candidate.path === folder.path) === index)
             .filter(folder => !this.excludedPaths.has(folder.path))
             .filter(folder => !query || filterNameMatches(folder.path === ROOT_PATH ? this.app.vault.getName() : folder.path, query))
             .sort((a, b) => compareNames(a, b));
@@ -1456,6 +1457,9 @@ class FolderColumnNavigatorView extends ItemView {
 
     private promptMove(item: TAbstractFile): void {
         const excludedPaths = new Set<string>();
+        if (item.parent) {
+            excludedPaths.add(item.parent.path);
+        }
         if (item instanceof TFolder) {
             this.plugin.app.vault.getAllLoadedFiles()
                 .filter((candidate): candidate is TFolder => candidate instanceof TFolder)
@@ -1472,6 +1476,7 @@ class FolderColumnNavigatorView extends ItemView {
                 return;
             }
             await this.plugin.app.fileManager.renameFile(item, nextPath);
+            this.revealMovedItem(targetFolder, nextPath, item instanceof TFolder ? "folder" : "file");
         }).open();
     }
 
@@ -1694,6 +1699,28 @@ class FolderColumnNavigatorView extends ItemView {
         this.filterState = null;
         this.refresh();
         window.requestAnimationFrame(() => this.focusFilePath(file.path));
+    }
+
+    private revealMovedItem(targetFolder: TFolder, movedPath: string, itemKind: "file" | "folder"): void {
+        const matchingEntries = this.plugin.getNavigationEntries()
+            .filter(entry => entry.path === ROOT_PATH || targetFolder.path.startsWith(`${entry.path}/`) || entry.path === targetFolder.path)
+            .sort((a, b) => b.path.length - a.path.length);
+        const basePath = matchingEntries[0]?.path ?? ROOT_PATH;
+        const columnPaths = this.buildFolderChain(basePath, targetFolder.path);
+        this.navigationBasePath = basePath;
+        this.columnPaths = columnPaths;
+        this.activeColumnIndex = columnPaths.length - 1;
+        this.selectedFilePath = itemKind === "file" ? movedPath : null;
+        this.filterState = null;
+        this.childColumnSelections.clear();
+        this.refresh();
+        window.requestAnimationFrame(() => {
+            if (columnPaths.length === 1) {
+                this.focusNavigationPath();
+                return;
+            }
+            this.focusFolderPath(targetFolder.path, columnPaths.length - 2);
+        });
     }
 
     private buildFolderChain(basePath: string, targetPath: string): string[] {

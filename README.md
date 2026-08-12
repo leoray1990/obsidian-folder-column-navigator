@@ -111,6 +111,7 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 - 每一列保留返回上一级入口，并能独立拖动调整宽度。
 - 文件列宽度默认按内容计算；可在设置中设定最小和最大宽度。
 - 在一级目录之间切换后，会记住该目录上次展开到的列和焦点位置。
+- 移动文件或目录后，会自动定位并展开目标目录，保留键盘焦点以便继续操作。
 
 ### 排序与显示
 
@@ -230,6 +231,7 @@ Folder Column Navigator adds a Finder-style multi-column navigator to Obsidian. 
 - Left-side root-folder navigation or top-level folder tags.
 - Finder-style multi-column folder browsing with resizable columns.
 - Single-click file opening while keeping keyboard focus in the navigator.
+- After moving a file or folder, automatically reveal and expand its destination folder while retaining keyboard focus.
 - Name, modified-time, and created-time sorting in ascending or descending order.
 - Configurable item metadata, icons, font sizes, folder-note priority, extension visibility, and Glob-based hiding.
 - Filterable context menus for files and folders.
