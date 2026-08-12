@@ -17,6 +17,11 @@ import {
     setIcon
 } from "obsidian";
 import { match as matchPinyin } from "pinyin-pro";
+import { Calendar } from "@fullcalendar/core";
+import zhCnLocale from "@fullcalendar/core/locales/zh-cn";
+import dayGridPlugin from "@fullcalendar/daygrid";
+import interactionPlugin from "@fullcalendar/interaction";
+import multiMonthPlugin from "@fullcalendar/multimonth";
 
 const VIEW_TYPE = "folder-column-navigator";
 const ROOT_PATH = "/";
@@ -61,6 +66,12 @@ interface FolderColumnNavigatorSettings {
     fileIconStyle: FileIconStyle;
     columnMinWidth: number;
     columnMaxWidth: number;
+    calendarMatchCreatedDate: boolean;
+    calendarMatchModifiedDate: boolean;
+    calendarMatchFrontmatter: boolean;
+    calendarFrontmatterKeys: string[];
+    calendarMatchFilename: boolean;
+    calendarFilenamePatterns: string[];
 }
 
 const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
@@ -85,7 +96,13 @@ const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
     folderIconStyle: "folder",
     fileIconStyle: "file",
     columnMinWidth: DEFAULT_COLUMN_MIN_WIDTH,
-    columnMaxWidth: DEFAULT_COLUMN_MAX_WIDTH
+    columnMaxWidth: DEFAULT_COLUMN_MAX_WIDTH,
+    calendarMatchCreatedDate: true,
+    calendarMatchModifiedDate: true,
+    calendarMatchFrontmatter: true,
+    calendarFrontmatterKeys: ["updated", "created", "创建日期", "修改日期", "date"],
+    calendarMatchFilename: true,
+    calendarFilenamePatterns: ["YYYYMMDD", "YYYY年MM月DD日", "YYYY-MM-DD*"]
 };
 
 interface NavigationEntry {
@@ -302,6 +319,120 @@ function cleanGlobPatternList(value: unknown): string[] {
         .filter(Boolean))];
 }
 
+function cleanCalendarRuleList(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+        return [];
+    }
+    return [...new Set(value
+        .filter((entry): entry is string => typeof entry === "string")
+        .map(entry => entry.trim())
+        .filter(Boolean))];
+}
+
+function isSameCalendarDay(left: Date, right: Date): boolean {
+    return left.getFullYear() === right.getFullYear() &&
+        left.getMonth() === right.getMonth() &&
+        left.getDate() === right.getDate();
+}
+
+function formatCalendarDate(date: Date): string {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+function valueMatchesCalendarDate(value: unknown, date: Date): boolean {
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return isSameCalendarDay(value, date);
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+        const valueDate = new Date(value);
+        return !Number.isNaN(valueDate.getTime()) && isSameCalendarDay(valueDate, date);
+    }
+    if (Array.isArray(value)) {
+        return value.some(entry => valueMatchesCalendarDate(entry, date));
+    }
+    if (typeof value !== "string") {
+        return false;
+    }
+
+    const matches = value.matchAll(/(\d{4})\s*(?:[-/.年])\s*(\d{1,2})\s*(?:[-/.月])\s*(\d{1,2})\s*(?:日)?/g);
+    for (const match of matches) {
+        if (Number(match[1]) === date.getFullYear() &&
+            Number(match[2]) === date.getMonth() + 1 &&
+            Number(match[3]) === date.getDate()) {
+            return true;
+        }
+    }
+    const compactMatches = value.matchAll(/(?:^|[^\d])(\d{4})(\d{2})(\d{2})(?!\d)/g);
+    for (const match of compactMatches) {
+        if (Number(match[1]) === date.getFullYear() &&
+            Number(match[2]) === date.getMonth() + 1 &&
+            Number(match[3]) === date.getDate()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function filenamePatternMatchesCalendarDate(filename: string, pattern: string, date: Date): boolean {
+    const values: Record<string, string> = {
+        YYYY: String(date.getFullYear()),
+        MM: String(date.getMonth() + 1).padStart(2, "0"),
+        DD: String(date.getDate()).padStart(2, "0")
+    };
+    let expression = "^";
+    for (let index = 0; index < pattern.length;) {
+        const token = ["YYYY", "MM", "DD"].find(candidate => pattern.startsWith(candidate, index));
+        if (token) {
+            expression += values[token];
+            index += token.length;
+            continue;
+        }
+        const character = pattern[index];
+        expression += character === "*" ? ".*" : /[\\^$+?.()|{}[\]]/.test(character) ? `\\${character}` : character;
+        index += 1;
+    }
+    return new RegExp(`${expression}$`).test(filename);
+}
+
+class DateMatchedFilesModal extends Modal {
+    constructor(
+        app: FolderColumnNavigatorPlugin["app"],
+        private readonly date: Date,
+        private readonly files: TFile[],
+        private readonly onChooseFile: (file: TFile) => Promise<void> | void
+    ) {
+        super(app);
+    }
+
+    onOpen(): void {
+        this.setTitle(`${formatCalendarDate(this.date)} 的文件`);
+        this.contentEl.createEl("p", {
+            text: `找到 ${this.files.length} 个匹配文件，请选择要打开的文件。`,
+            cls: "fcn-date-match-modal-description"
+        });
+        const list = this.contentEl.createDiv("fcn-date-match-modal-list");
+        this.files.forEach(file => {
+            const row = list.createEl("button", {
+                cls: "fcn-date-match-modal-item",
+                attr: { type: "button", "aria-label": `打开 ${file.path}` }
+            });
+            const icon = row.createSpan("fcn-item-icon");
+            setIcon(icon, "file-text");
+            const text = row.createDiv("fcn-date-match-modal-text");
+            text.createSpan({ text: file.basename, cls: "fcn-date-match-modal-name" });
+            text.createSpan({ text: file.path, cls: "fcn-date-match-modal-path" });
+            row.addEventListener("click", () => {
+                this.close();
+                void this.onChooseFile(file);
+            });
+        });
+    }
+
+    onClose(): void {
+        this.contentEl.empty();
+    }
+}
+
 function globPatternToRegExp(pattern: string): RegExp {
     let expression = "^";
     for (let index = 0; index < pattern.length; index += 1) {
@@ -423,8 +554,29 @@ export default class FolderColumnNavigator extends Plugin {
                 ? saved.fileIconStyle
                 : DEFAULT_SETTINGS.fileIconStyle,
             columnMinWidth,
-            columnMaxWidth
+            columnMaxWidth,
+            calendarMatchCreatedDate: typeof saved?.calendarMatchCreatedDate === "boolean"
+                ? saved.calendarMatchCreatedDate
+                : DEFAULT_SETTINGS.calendarMatchCreatedDate,
+            calendarMatchModifiedDate: typeof saved?.calendarMatchModifiedDate === "boolean"
+                ? saved.calendarMatchModifiedDate
+                : DEFAULT_SETTINGS.calendarMatchModifiedDate,
+            calendarMatchFrontmatter: typeof saved?.calendarMatchFrontmatter === "boolean"
+                ? saved.calendarMatchFrontmatter
+                : DEFAULT_SETTINGS.calendarMatchFrontmatter,
+            calendarFrontmatterKeys: cleanCalendarRuleList(saved?.calendarFrontmatterKeys),
+            calendarMatchFilename: typeof saved?.calendarMatchFilename === "boolean"
+                ? saved.calendarMatchFilename
+                : DEFAULT_SETTINGS.calendarMatchFilename,
+            calendarFilenamePatterns: cleanCalendarRuleList(saved?.calendarFilenamePatterns)
         };
+
+        if (this.settings.calendarFrontmatterKeys.length === 0 && saved?.calendarFrontmatterKeys === undefined) {
+            this.settings.calendarFrontmatterKeys = [...DEFAULT_SETTINGS.calendarFrontmatterKeys];
+        }
+        if (this.settings.calendarFilenamePatterns.length === 0 && saved?.calendarFilenamePatterns === undefined) {
+            this.settings.calendarFilenamePatterns = [...DEFAULT_SETTINGS.calendarFilenamePatterns];
+        }
     }
 
     async saveSettings(): Promise<void> {
@@ -657,6 +809,11 @@ class FolderColumnNavigatorView extends ItemView {
     private activeColumnIndex = 0;
     private topRootFolderPane!: HTMLElement;
     private shellEl!: HTMLElement;
+    private calendarPane!: HTMLElement;
+    private calendarContentEl!: HTMLElement;
+    private calendarToggleButton!: HTMLButtonElement;
+    private calendar: Calendar | null = null;
+    private calendarExpanded = false;
     private navigationEl!: HTMLElement;
     private columnsEl!: HTMLElement;
     private breadcrumbEl!: HTMLElement;
@@ -763,6 +920,8 @@ class FolderColumnNavigatorView extends ItemView {
         this.sortDirectionButton.addEventListener("click", () => void this.plugin.toggleSortDirection());
         this.columnsEl = contentPane.createDiv("fcn-columns");
 
+        this.createCalendarPane(layout);
+
         this.containerEl.addEventListener("keydown", this.keydownHandler);
         this.containerEl.addEventListener("focusin", this.focusinHandler);
         this.containerEl.addEventListener("pointerdown", this.pointerdownHandler);
@@ -780,6 +939,8 @@ class FolderColumnNavigatorView extends ItemView {
         this.stopColumnResize();
         this.clearItemDragState();
         this.closeContextMenu(false);
+        this.calendar?.destroy();
+        this.calendar = null;
         this.rootFolderResizeObserver?.disconnect();
         this.rootFolderResizeObserver = null;
         this.plugin.removeView(this);
@@ -820,6 +981,125 @@ class FolderColumnNavigatorView extends ItemView {
         this.renderNavigation();
         this.renderHeader();
         this.renderColumns();
+    }
+
+    private createCalendarPane(layout: HTMLElement): void {
+        this.calendarPane = layout.createDiv("fcn-calendar-pane");
+        const header = this.calendarPane.createDiv("fcn-calendar-header");
+        this.calendarToggleButton = header.createEl("button", {
+            cls: "fcn-calendar-toggle",
+            attr: { type: "button", "aria-expanded": "false" }
+        });
+        const icon = this.calendarToggleButton.createSpan("fcn-calendar-toggle-icon");
+        setIcon(icon, "calendar-days");
+        this.calendarToggleButton.createSpan({ text: "日历", cls: "fcn-calendar-toggle-label" });
+        const chevron = this.calendarToggleButton.createSpan("fcn-calendar-toggle-chevron");
+        setIcon(chevron, "chevron-up");
+        this.calendarToggleButton.addEventListener("click", () => this.toggleCalendar());
+        this.calendarContentEl = this.calendarPane.createDiv("fcn-calendar-content");
+        this.calendarPane.addEventListener("keydown", event => event.stopPropagation());
+        this.calendarPane.addEventListener("pointerdown", event => event.stopPropagation());
+        this.calendarPane.addEventListener("click", event => event.stopPropagation());
+        this.updateCalendarPane();
+    }
+
+    private toggleCalendar(): void {
+        this.calendarExpanded = !this.calendarExpanded;
+        this.updateCalendarPane();
+        if (!this.calendarExpanded) {
+            return;
+        }
+        this.ensureCalendar();
+        window.requestAnimationFrame(() => this.calendar?.updateSize());
+    }
+
+    private updateCalendarPane(): void {
+        this.calendarPane.toggleClass("is-expanded", this.calendarExpanded);
+        this.calendarToggleButton.setAttribute("aria-expanded", String(this.calendarExpanded));
+        this.calendarToggleButton.setAttribute("aria-label", this.calendarExpanded ? "收起日历" : "展开日历");
+        const chevron = this.calendarToggleButton.querySelector<HTMLElement>(".fcn-calendar-toggle-chevron");
+        if (chevron) {
+            setIcon(chevron, this.calendarExpanded ? "chevron-down" : "chevron-up");
+        }
+    }
+
+    private ensureCalendar(): void {
+        if (this.calendar) {
+            return;
+        }
+        this.calendar = new Calendar(this.calendarContentEl, {
+            plugins: [dayGridPlugin, interactionPlugin, multiMonthPlugin],
+            initialView: "dayGridMonth",
+            initialDate: new Date(),
+            locale: zhCnLocale,
+            firstDay: 1,
+            weekNumbers: true,
+            headerToolbar: {
+                left: "prev,next today",
+                center: "title",
+                right: "dayGridMonth,multiMonthYear"
+            },
+            buttonText: {
+                today: "今天",
+                month: "月",
+                year: "年"
+            },
+            fixedWeekCount: false,
+            showNonCurrentDates: false,
+            height: "auto",
+            dateClick: info => this.openCalendarDate(info.date)
+        });
+        this.calendar.render();
+    }
+
+    private openCalendarDate(date: Date): void {
+        const files = this.findFilesMatchingCalendarDate(date);
+        if (files.length === 0) {
+            new Notice(`${formatCalendarDate(date)} 未找到匹配文件。`);
+            return;
+        }
+        if (files.length === 1) {
+            void this.openCalendarMatchedFile(files[0]);
+            return;
+        }
+        new DateMatchedFilesModal(this.plugin.app, date, files, file => this.openCalendarMatchedFile(file)).open();
+    }
+
+    private async openCalendarMatchedFile(file: TFile): Promise<void> {
+        const matchingEntries = this.plugin.getNavigationEntries()
+            .filter(entry => entry.path === ROOT_PATH || file.path.startsWith(`${entry.path}/`))
+            .sort((left, right) => right.path.length - left.path.length);
+        const basePath = matchingEntries[0]?.path ?? ROOT_PATH;
+        this.navigationBasePath = basePath;
+        this.columnPaths = this.buildFolderChain(basePath, file.parent?.path ?? ROOT_PATH);
+        this.activeColumnIndex = this.columnPaths.length - 1;
+        this.selectedFilePath = file.path;
+        this.filterState = null;
+        this.refresh();
+        await this.openFile(file);
+    }
+
+    private findFilesMatchingCalendarDate(date: Date): TFile[] {
+        const settings = this.plugin.settings;
+        return this.plugin.app.vault.getFiles()
+            .filter(file => !this.plugin.isHiddenByPattern(file.path))
+            .filter(file => {
+                if (settings.calendarMatchCreatedDate && isSameCalendarDay(new Date(file.stat.ctime), date)) {
+                    return true;
+                }
+                if (settings.calendarMatchModifiedDate && isSameCalendarDay(new Date(file.stat.mtime), date)) {
+                    return true;
+                }
+                if (settings.calendarMatchFrontmatter) {
+                    const frontmatter = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter;
+                    if (frontmatter && settings.calendarFrontmatterKeys.some(key => valueMatchesCalendarDate(frontmatter[key], date))) {
+                        return true;
+                    }
+                }
+                return settings.calendarMatchFilename && settings.calendarFilenamePatterns
+                    .some(pattern => filenamePatternMatchesCalendarDate(file.basename, pattern, date));
+            })
+            .sort((left, right) => left.path.localeCompare(right.path, undefined, { numeric: true, sensitivity: "base" }));
     }
 
     private renderNavigation(): void {
@@ -2798,6 +3078,53 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                         control: { type: "toggle", key: "showExtensionMenuItems" }
                     }
                 ]
+            },
+            {
+                type: "page",
+                name: "日历",
+                desc: "底部日历点击日期时，用以下规则查找并打开文件。多条规则命中同一文件只会显示一次。",
+                items: [
+                    {
+                        name: "按创建日期匹配",
+                        desc: "匹配文件的创建日期（ctime）。",
+                        control: { type: "toggle", key: "calendarMatchCreatedDate" }
+                    },
+                    {
+                        name: "按修改日期匹配",
+                        desc: "匹配文件的修改日期（mtime）。",
+                        control: { type: "toggle", key: "calendarMatchModifiedDate" }
+                    },
+                    {
+                        name: "按文件属性匹配",
+                        desc: "读取指定属性的值。支持 YYYY-MM-DD、YYYY/MM/DD、YYYY.MM.DD 和 YYYY年M月D日；属性值中包含日期也能匹配。",
+                        control: { type: "toggle", key: "calendarMatchFrontmatter" }
+                    },
+                    {
+                        name: "日期属性名称",
+                        desc: "每行一个文件属性名称。默认包含 updated、created、创建日期、修改日期和 date。",
+                        visible: () => this.plugin.settings.calendarMatchFrontmatter,
+                        control: {
+                            type: "textarea",
+                            key: "calendarFrontmatterKeysText",
+                            placeholder: "updated\ncreated\n创建日期"
+                        }
+                    },
+                    {
+                        name: "按文件名匹配",
+                        desc: "匹配不含扩展名的文件名。日期格式可使用 YYYY、MM、DD；* 表示任意字符。",
+                        control: { type: "toggle", key: "calendarMatchFilename" }
+                    },
+                    {
+                        name: "文件名日期格式",
+                        desc: "每行一条，例如 YYYYMMDD、YYYY年MM月DD日、YYYY-MM-DD*。无 * 时要求文件名完全相同。",
+                        visible: () => this.plugin.settings.calendarMatchFilename,
+                        control: {
+                            type: "textarea",
+                            key: "calendarFilenamePatternsText",
+                            placeholder: "YYYYMMDD\nYYYY年MM月DD日\nYYYY-MM-DD*"
+                        }
+                    }
+                ]
             }
         ];
     }
@@ -2805,6 +3132,12 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
     getControlValue(key: string): unknown {
         if (key === "hiddenPatternsText") {
             return this.plugin.settings.hiddenPatterns.join("\n");
+        }
+        if (key === "calendarFrontmatterKeysText") {
+            return this.plugin.settings.calendarFrontmatterKeys.join("\n");
+        }
+        if (key === "calendarFilenamePatternsText") {
+            return this.plugin.settings.calendarFilenamePatterns.join("\n");
         }
         return this.plugin.settings[key as keyof FolderColumnNavigatorSettings];
     }
@@ -2817,6 +3150,10 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
             case "hideFileExtensions":
             case "showItemMetadata":
             case "showExtensionMenuItems":
+            case "calendarMatchCreatedDate":
+            case "calendarMatchModifiedDate":
+            case "calendarMatchFrontmatter":
+            case "calendarMatchFilename":
                 this.plugin.settings[key] = Boolean(value);
                 break;
             case "rootFolderVisibleRows":
@@ -2840,6 +3177,12 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                 break;
             case "hiddenPatternsText":
                 this.plugin.settings.hiddenPatterns = cleanGlobPatternList(String(value).split(/\r?\n/));
+                break;
+            case "calendarFrontmatterKeysText":
+                this.plugin.settings.calendarFrontmatterKeys = cleanCalendarRuleList(String(value).split(/\r?\n/));
+                break;
+            case "calendarFilenamePatternsText":
+                this.plugin.settings.calendarFilenamePatterns = cleanCalendarRuleList(String(value).split(/\r?\n/));
                 break;
             case "columnMinWidth": {
                 const minimum = clampConfigurableColumnWidth(value, DEFAULT_COLUMN_MIN_WIDTH);

@@ -15,6 +15,7 @@ It is built for fast keyboard browsing: use `↑` `↓` `←` `→` to move, `En
 - Keyboard-first navigation across root folders, file columns, and filterable context menus.
 - Per-column pinyin-aware filtering for English, numbers, Chinese characters, initials, full pinyin, and mixed pinyin queries.
 - File-list-like sorting, item metadata, configurable icons, font sizes, widths, and hiding rules.
+- A collapsible bottom calendar with month/year views and week numbers; click a day to open files matched by file dates, frontmatter dates, or filename date patterns.
 - Built-in file and folder context menus, plus compatibility with other plugins through Obsidian's `file-menu` event.
 - Immediate duplicate-name validation when creating or renaming files and folders.
 
@@ -49,6 +50,10 @@ Type English, numbers, Chinese text, pinyin initials, full pinyin, or mixed piny
 File and folder actions are available from the context menu, which also supports keyboard filtering.
 
 ![Folder context menu with keyboard filtering](images/context-menu.png)
+
+### Bottom calendar / 底部日历
+
+Expand the calendar at the bottom of the navigator to browse by month or year. Clicking a date opens its matching files directly, or presents a picker when there are multiple matches.
 
 ## Installation
 
@@ -132,6 +137,18 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 - 目录与文件名称左对齐。
 - 文件夹笔记优先显示：当目录内存在与目录同名的文件时，将其识别为文件夹笔记，置顶并显示书签图标。
 
+### 底部日历与日期文件
+
+底部的“日历”栏默认收起；点击即可展开，也可再次点击收起。日历提供月视图与年视图、上一期/下一期导航和左侧周序号。
+
+点击某一天后，插件会在仓库的可见文件中查找匹配项：
+
+- 创建日期（`ctime`）和修改日期（`mtime`）。
+- 文件属性中的日期；默认读取 `updated`、`created`、`创建日期`、`修改日期`、`date`。属性值支持 `YYYY-MM-DD`、`YYYY/MM/DD`、`YYYY.MM.DD`、`YYYY年M月D日`，也支持在更长文本中包含这些日期。
+- 文件名日期格式；默认包含 `YYYYMMDD`、`YYYY年MM月DD日`、`YYYY-MM-DD*`。其中 `YYYY`、`MM`、`DD` 代表所点日期，`*` 代表任意字符；例如 `YYYY-MM-DD*` 匹配以该日期开头的文件名。
+
+四类匹配规则和两组规则列表都可在设置的“日历”页独立调整。多个规则命中同一文件时只保留一项；仅命中一个文件会直接打开，命中多个文件则显示选择列表。
+
 ### 隐藏规则
 
 在设置的“隐藏规则”中，每行填写一条相对于仓库根目录的 Glob 规则：
@@ -193,7 +210,7 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 
 ## 设置说明
 
-设置页按 **导航**、**显示**、**高级** 三个分类页面整理，并支持 Obsidian 设置搜索。
+设置页按 **导航**、**显示**、**高级**、**日历** 四个分类页面整理，并支持 Obsidian 设置搜索。
 
 | 设置 | 作用 |
 | --- | --- |
@@ -210,6 +227,7 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 | 文件夹图标 / 文件图标 | 分别控制文件夹、文件的图标样式 |
 | 添加自定义目录 | 添加非一级目录到导航区域，并可设置显示名称 |
 | 显示扩展菜单项 | 控制是否显示由 Obsidian 或其他插件通过 `file-menu` 添加的右键菜单项 |
+| 日历 | 分别控制创建日期、修改日期、文件属性、文件名的日期匹配规则，并编辑属性名和文件名格式 |
 
 ## 隐私与数据
 

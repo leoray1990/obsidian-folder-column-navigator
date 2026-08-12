@@ -1,12 +1,16 @@
 {
   "name": "folder-column-navigator",
-  "version": "1.0.3",
+  "version": "1.1.0",
   "private": true,
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit -skipLibCheck && node esbuild.config.mjs production",
     "dev": "node esbuild.config.mjs"
   },
   "dependencies": {
+    "@fullcalendar/core": "^6.1.21",
+    "@fullcalendar/daygrid": "^6.1.21",
+    "@fullcalendar/interaction": "^6.1.21",
+    "@fullcalendar/multimonth": "^6.1.21",
     "pinyin-pro": "^3.28.1"
   },
   "devDependencies": {

@@ -30,8 +30,173 @@
     display: grid;
     grid-template-columns: 220px 5px minmax(0, 1fr);
     flex: 1;
-    height: 100%;
     min-height: 0;
+}
+
+.fcn-calendar-pane {
+    flex: 0 0 auto;
+    min-height: 0;
+    border-top: 1px solid var(--fcn-divider);
+    background: var(--background-primary);
+}
+
+.fcn-calendar-header {
+    display: flex;
+    align-items: center;
+    min-height: 34px;
+    padding: 0 8px;
+    background: var(--background-secondary);
+}
+
+.fcn-calendar-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    margin: 0;
+    padding: 6px 2px;
+    color: var(--text-muted);
+    background: transparent;
+    border: 0;
+    border-radius: var(--radius-s);
+    cursor: pointer;
+    font-size: var(--font-ui-small);
+    font-weight: var(--font-medium);
+    text-align: left;
+}
+
+.fcn-calendar-toggle:hover {
+    color: var(--text-normal);
+}
+
+.fcn-calendar-toggle-icon,
+.fcn-calendar-toggle-chevron {
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+
+.fcn-calendar-toggle-icon svg,
+.fcn-calendar-toggle-chevron svg {
+    width: 16px;
+    height: 16px;
+}
+
+.fcn-calendar-toggle-chevron {
+    margin-left: auto;
+}
+
+.fcn-calendar-content {
+    display: none;
+    min-height: 0;
+    max-height: min(48vh, 520px);
+    overflow: auto;
+    padding: 2px 10px 10px;
+}
+
+.fcn-calendar-pane.is-expanded .fcn-calendar-content {
+    display: block;
+}
+
+.folder-column-navigator-view .fcn-calendar-content .fc {
+    --fc-border-color: var(--background-modifier-border);
+    --fc-page-bg-color: var(--background-primary);
+    --fc-neutral-bg-color: var(--background-secondary);
+    --fc-today-bg-color: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary));
+    --fc-button-bg-color: var(--background-secondary-alt);
+    --fc-button-border-color: var(--background-modifier-border);
+    --fc-button-hover-bg-color: var(--background-modifier-hover);
+    --fc-button-hover-border-color: var(--background-modifier-border-hover);
+    --fc-button-active-bg-color: var(--interactive-accent);
+    --fc-button-active-border-color: var(--interactive-accent);
+    --fc-event-bg-color: var(--interactive-accent);
+    --fc-event-border-color: var(--interactive-accent);
+    --fc-event-text-color: var(--text-on-accent);
+    color: var(--text-normal);
+    font-family: var(--font-interface);
+    font-size: var(--font-ui-smaller);
+}
+
+.folder-column-navigator-view .fcn-calendar-content .fc .fc-toolbar {
+    gap: 8px;
+    margin: 4px 0 8px;
+}
+
+.folder-column-navigator-view .fcn-calendar-content .fc .fc-toolbar-title {
+    color: var(--text-normal);
+    font-size: var(--font-ui-medium);
+}
+
+.folder-column-navigator-view .fcn-calendar-content .fc .fc-button {
+    padding: 4px 7px;
+    border-radius: var(--radius-s);
+    box-shadow: none;
+    font-size: var(--font-ui-smaller);
+    line-height: 1.25;
+}
+
+.folder-column-navigator-view .fcn-calendar-content .fc .fc-daygrid-day,
+.folder-column-navigator-view .fcn-calendar-content .fc .fc-daygrid-week-number {
+    cursor: pointer;
+}
+
+.folder-column-navigator-view .fcn-calendar-content .fc .fc-daygrid-day-number,
+.folder-column-navigator-view .fcn-calendar-content .fc .fc-col-header-cell-cushion,
+.folder-column-navigator-view .fcn-calendar-content .fc .fc-daygrid-week-number {
+    color: var(--text-normal);
+    text-decoration: none;
+}
+
+.fcn-date-match-modal-description {
+    margin: 0 0 12px;
+    color: var(--text-muted);
+}
+
+.fcn-date-match-modal-list {
+    display: flex;
+    flex-direction: column;
+    max-height: min(52vh, 420px);
+    overflow-y: auto;
+    border-top: 1px solid var(--background-modifier-border);
+}
+
+.fcn-date-match-modal-item {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    width: 100%;
+    margin: 0;
+    padding: 9px 7px;
+    color: var(--text-normal);
+    background: transparent;
+    border: 0;
+    border-bottom: 1px solid var(--background-modifier-border);
+    border-radius: 0;
+    cursor: pointer;
+    text-align: left;
+}
+
+.fcn-date-match-modal-item:hover {
+    background: var(--background-modifier-hover);
+}
+
+.fcn-date-match-modal-text {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.fcn-date-match-modal-name,
+.fcn-date-match-modal-path {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fcn-date-match-modal-path {
+    color: var(--text-faint);
+    font-size: var(--font-ui-smaller);
 }
 
 .fcn-shell.fcn-root-top-mode .fcn-navigation-pane,
