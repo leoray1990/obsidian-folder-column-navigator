@@ -31,6 +31,7 @@ const MIN_ITEM_FONT_SIZE = 10;
 const MAX_ITEM_FONT_SIZE = 24;
 const DEFAULT_ROOT_FOLDER_FONT_SIZE = 13;
 const DEFAULT_FILE_NAME_FONT_SIZE = 14;
+const DRAG_EXPAND_DELAY_MS = 500;
 
 type SortField = "name" | "modified" | "created";
 type SortDirection = "asc" | "desc";
@@ -668,6 +669,10 @@ class FolderColumnNavigatorView extends ItemView {
     private rootFoldersExpanded = false;
     private rootFolderResizeObserver: ResizeObserver | null = null;
     private draggedRootFolderPath: string | null = null;
+    private draggedItemPath: string | null = null;
+    private dragHoverTargetPath: string | null = null;
+    private dragExpandedTargetPath: string | null = null;
+    private dragExpandTimer: number | null = null;
     private isResizing = false;
     private resizePointerId: number | null = null;
     private resizeWidth = DEFAULT_NAVIGATION_WIDTH;
@@ -773,6 +778,7 @@ class FolderColumnNavigatorView extends ItemView {
         this.containerEl.removeEventListener("click", this.clickHandler);
         this.stopResize();
         this.stopColumnResize();
+        this.clearItemDragState();
         this.closeContextMenu(false);
         this.rootFolderResizeObserver?.disconnect();
         this.rootFolderResizeObserver = null;
@@ -989,8 +995,14 @@ class FolderColumnNavigatorView extends ItemView {
                 this.showNavigationMenu(event);
             }
         });
+        const folder = this.plugin.getFolder(entry.path);
+        if (folder) {
+            this.enableMoveDropTarget(row, folder, entry.kind === "root-folder");
+        }
         if (entry.kind === "root-folder") {
             this.enableRootFolderDragging(row, entry.path);
+        } else if (folder && entry.kind !== "root") {
+            this.enableItemDragging(row, folder);
         }
         return row;
     }
@@ -999,12 +1011,13 @@ class FolderColumnNavigatorView extends ItemView {
         row.draggable = true;
         row.addClass("fcn-root-folder-draggable");
         row.addEventListener("dragstart", event => {
+            const folder = this.plugin.getFolder(path);
+            if (!folder) {
+                return;
+            }
+            this.startItemDrag(row, folder, event);
             this.draggedRootFolderPath = path;
             row.addClass("is-root-folder-dragging");
-            if (event.dataTransfer) {
-                event.dataTransfer.effectAllowed = "move";
-                event.dataTransfer.setData("text/plain", path);
-            }
         });
         row.addEventListener("dragover", event => {
             if (!this.draggedRootFolderPath || this.draggedRootFolderPath === path) {
@@ -1030,9 +1043,13 @@ class FolderColumnNavigatorView extends ItemView {
             event.preventDefault();
             const insertAfter = this.isRootFolderDropAfter(row, event);
             this.clearRootFolderDragState();
+            this.clearItemDragState();
             void this.plugin.reorderRootFolders(draggedPath, path, insertAfter);
         });
-        row.addEventListener("dragend", () => this.clearRootFolderDragState());
+        row.addEventListener("dragend", () => {
+            this.clearRootFolderDragState();
+            this.clearItemDragState();
+        });
     }
 
     private isRootFolderDropAfter(row: HTMLElement, event: DragEvent): boolean {
@@ -1054,6 +1071,113 @@ class FolderColumnNavigatorView extends ItemView {
             ".is-root-folder-dragging, .is-root-folder-drop-before, .is-root-folder-drop-after"
         ).forEach(item => item.removeClass("is-root-folder-dragging", "is-root-folder-drop-before", "is-root-folder-drop-after"));
         this.draggedRootFolderPath = null;
+    }
+
+    private enableItemDragging(row: HTMLElement, item: TAbstractFile): void {
+        row.draggable = true;
+        row.addClass("fcn-item-draggable");
+        row.addEventListener("dragstart", event => this.startItemDrag(row, item, event));
+        row.addEventListener("dragend", () => this.clearItemDragState());
+    }
+
+    private startItemDrag(row: HTMLElement, item: TAbstractFile, event: DragEvent): void {
+        this.clearItemDragState();
+        this.draggedItemPath = item.path;
+        row.addClass("is-item-dragging");
+        if (event.dataTransfer) {
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("application/x-folder-column-navigator-path", item.path);
+            event.dataTransfer.setData("text/plain", item.path);
+        }
+    }
+
+    private enableMoveDropTarget(row: HTMLElement, folder: TFolder, isRootFolderReorderTarget = false): void {
+        row.addEventListener("dragover", event => {
+            if (isRootFolderReorderTarget && this.draggedRootFolderPath) {
+                return;
+            }
+            const item = this.getDraggedItem();
+            if (!item || !this.canMoveItemTo(item, folder)) {
+                return;
+            }
+            event.preventDefault();
+            if (event.dataTransfer) {
+                event.dataTransfer.dropEffect = "move";
+            }
+            row.addClass("is-move-drop-target");
+            this.scheduleDragTargetExpansion(folder, row);
+        });
+        row.addEventListener("dragleave", event => {
+            if (event.relatedTarget instanceof Node && row.contains(event.relatedTarget)) {
+                return;
+            }
+            row.removeClass("is-move-drop-target");
+            this.cancelDragTargetExpansion(folder.path);
+        });
+        row.addEventListener("drop", event => {
+            if (isRootFolderReorderTarget && this.draggedRootFolderPath) {
+                return;
+            }
+            const item = this.getDraggedItem();
+            if (!item || !this.canMoveItemTo(item, folder)) {
+                return;
+            }
+            event.preventDefault();
+            this.clearItemDragState();
+            void this.moveItemTo(item, folder);
+        });
+    }
+
+    private getDraggedItem(): TAbstractFile | null {
+        return this.draggedItemPath
+            ? this.plugin.app.vault.getAbstractFileByPath(this.draggedItemPath)
+            : null;
+    }
+
+    private scheduleDragTargetExpansion(folder: TFolder, row: HTMLElement): void {
+        if (this.dragExpandedTargetPath === folder.path || this.dragHoverTargetPath === folder.path) {
+            return;
+        }
+        this.cancelDragTargetExpansion();
+        this.dragExpandedTargetPath = null;
+        this.dragHoverTargetPath = folder.path;
+        this.dragExpandTimer = window.setTimeout(() => {
+            this.dragExpandTimer = null;
+            if (this.dragHoverTargetPath !== folder.path) {
+                return;
+            }
+            this.dragExpandedTargetPath = folder.path;
+            this.expandDragTarget(folder, row);
+        }, DRAG_EXPAND_DELAY_MS);
+    }
+
+    private cancelDragTargetExpansion(path?: string): void {
+        if (path && this.dragHoverTargetPath !== path) {
+            return;
+        }
+        if (this.dragExpandTimer !== null) {
+            window.clearTimeout(this.dragExpandTimer);
+            this.dragExpandTimer = null;
+        }
+        this.dragHoverTargetPath = null;
+    }
+
+    private expandDragTarget(folder: TFolder, row: HTMLElement): void {
+        const columnIndex = Number(row.dataset.fcnColumn);
+        if (Number.isInteger(columnIndex)) {
+            this.openFolderColumn(folder.path, columnIndex, false);
+            return;
+        }
+        this.previewNavigationPath(folder.path);
+    }
+
+    private clearItemDragState(): void {
+        this.cancelDragTargetExpansion();
+        this.dragExpandedTargetPath = null;
+        this.draggedItemPath = null;
+        this.containerEl?.querySelectorAll<HTMLElement>(".is-item-dragging, .is-move-drop-target").forEach(item => {
+            item.removeClass("is-item-dragging", "is-move-drop-target");
+        });
     }
 
     private renderFolderTree(parent: HTMLElement, folder: TFolder, depth: number): void {
@@ -1204,6 +1328,8 @@ class FolderColumnNavigatorView extends ItemView {
             const visibleChildCount = folder.children.filter(child => !this.plugin.isHiddenByPattern(child.path)).length;
             row.createSpan({ text: `${visibleChildCount}`, cls: "fcn-item-meta" });
         }
+        this.enableItemDragging(row, folder);
+        this.enableMoveDropTarget(row, folder);
         row.addEventListener("click", () => this.openFolderColumn(folder.path, columnIndex));
         row.addEventListener("contextmenu", event => {
             event.preventDefault();
@@ -1233,6 +1359,7 @@ class FolderColumnNavigatorView extends ItemView {
         if (this.plugin.settings.showItemMetadata) {
             row.createSpan({ text: file.extension.toUpperCase(), cls: "fcn-item-meta" });
         }
+        this.enableItemDragging(row, file);
         row.addEventListener("click", event => {
             this.selectedFilePath = file.path;
             this.activeColumnIndex = columnIndex;
@@ -1467,17 +1594,36 @@ class FolderColumnNavigatorView extends ItemView {
                 .forEach(candidate => excludedPaths.add(candidate.path));
         }
         new FolderDestinationModal(this.plugin.app, excludedPaths, async targetFolder => {
-            if (targetFolder.path === item.parent?.path) {
-                return;
-            }
-            const nextPath = joinVaultPath(targetFolder, item.name);
-            if (this.plugin.app.vault.getAbstractFileByPath(nextPath)) {
-                new Notice("目标目录已有同名文件或目录。", 3000);
-                return;
-            }
-            await this.plugin.app.fileManager.renameFile(item, nextPath);
-            this.revealMovedItem(targetFolder, nextPath, item instanceof TFolder ? "folder" : "file");
+            await this.moveItemTo(item, targetFolder);
         }).open();
+    }
+
+    private canMoveItemTo(item: TAbstractFile, targetFolder: TFolder): boolean {
+        if (!item.parent || targetFolder.path === item.parent.path) {
+            return false;
+        }
+        if (item instanceof TFolder && (targetFolder.path === item.path || targetFolder.path.startsWith(`${item.path}/`))) {
+            return false;
+        }
+        return !this.plugin.app.vault.getAbstractFileByPath(joinVaultPath(targetFolder, item.name));
+    }
+
+    private async moveItemTo(item: TAbstractFile, targetFolder: TFolder): Promise<void> {
+        if (!item.parent || targetFolder.path === item.parent.path) {
+            return;
+        }
+        if (item instanceof TFolder && (targetFolder.path === item.path || targetFolder.path.startsWith(`${item.path}/`))) {
+            new Notice("不能将文件夹移动到自身或其子目录。", 3000);
+            return;
+        }
+        const nextPath = joinVaultPath(targetFolder, item.name);
+        if (this.plugin.app.vault.getAbstractFileByPath(nextPath)) {
+            new Notice("目标目录已有同名文件或目录。", 3000);
+            return;
+        }
+        const itemKind = item instanceof TFolder ? "folder" : "file";
+        await this.plugin.app.fileManager.renameFile(item, nextPath);
+        this.revealMovedItem(targetFolder, nextPath, itemKind);
     }
 
     private async deleteItem(item: TAbstractFile): Promise<void> {

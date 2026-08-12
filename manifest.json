@@ -1,7 +1,7 @@
 {
   "id": "folder-column-navigator",
   "name": "Folder Column Navigator",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "minAppVersion": "1.13.0",
   "description": "Finder-style multi-column folder and file navigator.",
   "author": "Leoray",
