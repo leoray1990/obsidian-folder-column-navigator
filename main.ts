@@ -166,6 +166,25 @@ interface NavigationPosition {
 
 type FolderColumnNavigatorPlugin = FolderColumnNavigator;
 
+type LegacySettingControl =
+    | { key: string; type: "toggle" }
+    | { key: string; type: "dropdown"; options: Record<string, string> }
+    | { key: string; type: "text"; placeholder?: string }
+    | { key: string; type: "textarea"; placeholder?: string; rows?: number }
+    | { key: string; type: "slider"; min: number; max: number; step: number }
+    | { key: string; type: "number"; placeholder?: string };
+
+interface LegacySettingItem {
+    name?: string;
+    desc?: string | DocumentFragment;
+    visible?: boolean | (() => boolean);
+    type?: "page" | "group" | "list";
+    heading?: string;
+    items?: LegacySettingItem[];
+    control?: LegacySettingControl;
+    render?: (setting: Setting, group: unknown) => void;
+}
+
 function normalizeFolderPath(value: string): string {
     const path = value.trim().replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
     return path ? path : ROOT_PATH;
@@ -3565,7 +3584,157 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
         this.plugin = plugin;
     }
 
+    display(): void {
+        this.containerEl.empty();
+        this.containerEl.addClass("fcn-settings-fallback");
+        new Setting(this.containerEl).setName("目录文件列表").setHeading();
+        this.renderLegacySettingItems(this.containerEl, this.createSettingDefinitions());
+    }
+
+    private renderLegacySettingItems(containerEl: HTMLElement, items: SettingDefinitionItem[]): void {
+        items.forEach(item => {
+            const legacyItem = item as unknown as LegacySettingItem;
+            if (!this.isLegacySettingVisible(legacyItem.visible)) {
+                return;
+            }
+
+            if (legacyItem.control && legacyItem.name) {
+                this.renderLegacyControl(containerEl, legacyItem);
+                return;
+            }
+
+            if (legacyItem.render && legacyItem.name) {
+                const setting = new Setting(containerEl).setName(legacyItem.name);
+                if (legacyItem.desc) {
+                    setting.setDesc(legacyItem.desc);
+                }
+                legacyItem.render(setting, undefined);
+                return;
+            }
+
+            if (legacyItem.type === "page" && legacyItem.name) {
+                new Setting(containerEl).setName(legacyItem.name).setDesc(legacyItem.desc ?? "").setHeading();
+                this.renderLegacySettingItems(containerEl, (legacyItem.items ?? []) as unknown as SettingDefinitionItem[]);
+                return;
+            }
+
+            if (legacyItem.type === "group" || legacyItem.type === "list") {
+                if (legacyItem.heading) {
+                    new Setting(containerEl).setName(legacyItem.heading).setHeading();
+                }
+                this.renderLegacySettingItems(containerEl, (legacyItem.items ?? []) as unknown as SettingDefinitionItem[]);
+            }
+        });
+    }
+
+    private renderLegacyControl(containerEl: HTMLElement, definition: LegacySettingItem): void {
+        if (!definition.control || !definition.name) {
+            return;
+        }
+
+        const setting = new Setting(containerEl).setName(definition.name);
+        if (definition.desc) {
+            setting.setDesc(definition.desc);
+        }
+
+        const control = definition.control;
+        const currentValue = this.getControlValue(control.key);
+        const refreshAfterChange = [
+            "showRootFoldersAtTop",
+            "wrapItemNames",
+            "showFolderNotes",
+            "folderNoteMatchSpecialName",
+            "calendarMatchFrontmatter",
+            "calendarMatchFilename"
+        ].includes(control.key);
+        const onChange = (value: unknown): void => {
+            void this.setLegacyControlValue(control.key, value, refreshAfterChange);
+        };
+
+        switch (control.type) {
+            case "toggle":
+                setting.addToggle(toggle => toggle
+                    .setValue(Boolean(currentValue))
+                    .onChange(value => onChange(value)));
+                break;
+            case "dropdown":
+                setting.addDropdown(dropdown => {
+                    Object.entries(control.options).forEach(([value, label]) => dropdown.addOption(value, label));
+                    const selectedValue = typeof currentValue === "string"
+                        ? currentValue
+                        : Object.keys(control.options)[0];
+                    dropdown.setValue(selectedValue);
+                    dropdown.onChange(value => onChange(value));
+                });
+                break;
+            case "text":
+                setting.addText(text => {
+                    text.setValue(typeof currentValue === "string" ? currentValue : "");
+                    if (control.placeholder) {
+                        text.setPlaceholder(control.placeholder);
+                    }
+                    text.onChange(value => onChange(value));
+                });
+                break;
+            case "textarea":
+                setting.addTextArea(textarea => {
+                    textarea.setValue(typeof currentValue === "string" ? currentValue : "");
+                    textarea.inputEl.rows = control.rows ?? 3;
+                    if (control.placeholder) {
+                        textarea.setPlaceholder(control.placeholder);
+                    }
+                    textarea.onChange(value => onChange(value));
+                });
+                break;
+            case "slider":
+                setting.addSlider(slider => {
+                    const value = typeof currentValue === "number" && Number.isFinite(currentValue)
+                        ? currentValue
+                        : control.min;
+                    slider.setLimits(control.min, control.max, control.step).setValue(value);
+                    slider.onChange(value => onChange(value));
+                });
+                break;
+            case "number":
+                setting.addText(text => {
+                    text.setValue(typeof currentValue === "number" ? String(currentValue) : "");
+                    if (control.placeholder) {
+                        text.setPlaceholder(control.placeholder);
+                    }
+                    text.onChange(value => onChange(Number(value)));
+                });
+                break;
+            default:
+                break;
+        }
+    }
+
+    private isLegacySettingVisible(visible?: boolean | (() => boolean)): boolean {
+        return typeof visible === "function" ? visible() : visible !== false;
+    }
+
+    private async setLegacyControlValue(key: string, value: unknown, refresh: boolean): Promise<void> {
+        await this.setControlValue(key, value);
+        if (refresh) {
+            this.refreshSettingsView();
+        }
+    }
+
+    private refreshSettingsView(): void {
+        const update: unknown = Reflect.get(this, "update");
+        if (typeof update === "function") {
+            Reflect.apply(update, this, []);
+            return;
+        }
+
+        this.display();
+    }
+
     getSettingDefinitions(): SettingDefinitionItem[] {
+        return this.createSettingDefinitions();
+    }
+
+    private createSettingDefinitions(): SettingDefinitionItem[] {
         return [
             {
                 type: "page",
@@ -3603,7 +3772,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                 .addButton(button => button.setButtonText("添加").setCta().onClick(() => {
                                     void this.plugin.addCustomFolder(inputValue).then(added => {
                                         if (added) {
-                                            this.update();
+                                            this.refreshSettingsView();
                                         }
                                     });
                                 }));
@@ -3619,10 +3788,10 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                 setting
                                     .addButton(button => button
                                         .setButtonText(this.plugin.isPinned(folder.path) ? "取消置顶" : "置顶")
-                                        .onClick(() => void this.plugin.togglePinned(folder.path).then(() => this.update())))
+                                        .onClick(() => void this.plugin.togglePinned(folder.path).then(() => this.refreshSettingsView())))
                                     .addButton(button => button
                                         .setButtonText(this.plugin.settings.hiddenRootPaths.includes(folder.path) ? "显示" : "隐藏")
-                                        .onClick(() => void this.plugin.toggleHiddenRoot(folder.path).then(() => this.update())));
+                                        .onClick(() => void this.plugin.toggleHiddenRoot(folder.path).then(() => this.refreshSettingsView())));
                             }
                         }))
                     },
@@ -3642,11 +3811,11 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                             .onChange(value => void this.plugin.updateCustomFolderDisplayName(path, value)))
                                         .addButton(button => button
                                             .setButtonText(this.plugin.isPinned(path) ? "取消置顶" : "置顶")
-                                            .onClick(() => void this.plugin.togglePinned(path).then(() => this.update())))
+                                        .onClick(() => void this.plugin.togglePinned(path).then(() => this.refreshSettingsView())))
                                         .addExtraButton(button => button
                                             .setIcon("trash")
                                             .setTooltip("移除自定义目录")
-                                            .onClick(() => void this.plugin.removeCustomFolder(path).then(() => this.update())));
+                                            .onClick(() => void this.plugin.removeCustomFolder(path).then(() => this.refreshSettingsView())));
                                 }
                             };
                         })
@@ -4053,7 +4222,10 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                 return;
         }
         await this.plugin.saveSettings();
-        this.refreshDomState();
+        const refreshDomState: unknown = Reflect.get(this, "refreshDomState");
+        if (typeof refreshDomState === "function") {
+            Reflect.apply(refreshDomState, this, []);
+        }
     }
 
     private itemFontSlider(key: "rootFolderFontSize" | "fileNameFontSize") {
