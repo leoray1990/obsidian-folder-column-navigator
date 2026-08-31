@@ -6,7 +6,7 @@ import {
     Notice,
     Plugin,
     PluginSettingTab,
-    Setting,
+    type SettingDefinitionItem,
     SuggestModal,
     TAbstractFile,
     TFile,
@@ -39,10 +39,6 @@ const MIN_ITEM_NAME_WRAP_LINES = 1;
 const MAX_ITEM_NAME_WRAP_LINES = 6;
 const DEFAULT_ITEM_NAME_WRAP_LINES = 2;
 const DRAG_EXPAND_DELAY_MS = 500;
-const LEGACY_SETTINGS_RENDER_METHOD = "display";
-const DECLARATIVE_SETTINGS_METHOD = "getSettingDefinitions";
-const DECLARATIVE_GET_CONTROL_METHOD = "getControlValue";
-const DECLARATIVE_SET_CONTROL_METHOD = "setControlValue";
 
 type SortField = "name" | "modified" | "created";
 type SortDirection = "asc" | "desc";
@@ -168,25 +164,6 @@ interface NavigationPosition {
 }
 
 type FolderColumnNavigatorPlugin = FolderColumnNavigator;
-
-type LegacySettingControl =
-    | { key: string; type: "toggle" }
-    | { key: string; type: "dropdown"; options: Record<string, string> }
-    | { key: string; type: "text"; placeholder?: string }
-    | { key: string; type: "textarea"; placeholder?: string; rows?: number }
-    | { key: string; type: "slider"; min: number; max: number; step: number; displayFormat?: (value: number) => string }
-    | { key: string; type: "number"; placeholder?: string };
-
-interface LegacySettingItem {
-    name?: string;
-    desc?: string | DocumentFragment;
-    visible?: boolean | (() => boolean);
-    type?: "page" | "group" | "list";
-    heading?: string;
-    items?: LegacySettingItem[];
-    control?: LegacySettingControl;
-    render?: (setting: Setting, group?: unknown) => void;
-}
 
 function normalizeFolderPath(value: string): string {
     const path = value.trim().replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, "");
@@ -843,14 +820,7 @@ export default class FolderColumnNavigator extends Plugin {
         if (path === ROOT_PATH) {
             return this.app.vault.getRoot();
         }
-        const vault = this.app.vault as typeof this.app.vault & {
-            getFolderByPath?: (folderPath: string) => TFolder | null;
-        };
-        if (typeof vault.getFolderByPath === "function") {
-            return vault.getFolderByPath(path);
-        }
-        const file = vault.getAbstractFileByPath(path);
-        return file instanceof TFolder ? file : null;
+        return this.app.vault.getFolderByPath(path);
     }
 
     getNavigationEntries(): NavigationEntry[] {
@@ -2516,14 +2486,7 @@ class FolderColumnNavigatorView extends ItemView {
 
     private async deleteItem(item: TAbstractFile): Promise<void> {
         if (await this.plugin.app.fileManager.promptForDeletion(item)) {
-            const fileManager = this.plugin.app.fileManager as typeof this.plugin.app.fileManager & {
-                trashFile?: (file: TAbstractFile) => Promise<void>;
-            };
-            if (typeof fileManager.trashFile === "function") {
-                await fileManager.trashFile(item);
-            } else {
-                await this.plugin.app.vault.trash(item, false);
-            }
+            await this.plugin.app.fileManager.trashFile(item);
         }
     }
 
@@ -3589,208 +3552,29 @@ class FolderColumnNavigatorView extends ItemView {
 
 class FolderColumnNavigatorSettingTab extends PluginSettingTab {
     private readonly plugin: FolderColumnNavigatorPlugin;
-    private legacyActivePageIndex = 0;
 
     constructor(app: FolderColumnNavigatorPlugin["app"], plugin: FolderColumnNavigatorPlugin) {
         super(app, plugin);
         this.plugin = plugin;
-        Object.defineProperties(this, {
-            [LEGACY_SETTINGS_RENDER_METHOD]: {
-                configurable: true,
-                value: () => this.renderLegacySettings()
-            },
-            [DECLARATIVE_SETTINGS_METHOD]: {
-                configurable: true,
-                value: () => this.createSettingDefinitions()
-            },
-            [DECLARATIVE_GET_CONTROL_METHOD]: {
-                configurable: true,
-                value: (key: string) => this.readControlValue(key)
-            },
-            [DECLARATIVE_SET_CONTROL_METHOD]: {
-                configurable: true,
-                value: (key: string, value: unknown) => this.applyControlValue(key, value)
-            }
-        });
     }
 
-    private renderLegacySettings(): void {
-        this.containerEl.empty();
-        this.containerEl.addClass("fcn-settings-fallback");
-        new Setting(this.containerEl).setName("目录文件列表").setHeading();
-
-        const pages = this.createSettingDefinitions()
-            .filter(item => item.type === "page");
-        if (pages.length === 0) {
-            return;
-        }
-
-        const activePageIndex = Math.max(0, Math.min(this.legacyActivePageIndex, pages.length - 1));
-        this.legacyActivePageIndex = activePageIndex;
-        const tabs = this.containerEl.createDiv("fcn-settings-tabs");
-        pages.forEach((page, index) => {
-            const tab = tabs.createEl("button", {
-                text: page.name ?? "",
-                cls: "fcn-settings-tab",
-                attr: {
-                    type: "button",
-                    "aria-selected": String(index === activePageIndex)
-                }
-            });
-            tab.toggleClass("is-active", index === activePageIndex);
-            tab.addEventListener("click", () => {
-                this.legacyActivePageIndex = index;
-                this.renderLegacySettings();
-            });
-        });
-
-        const content = this.containerEl.createDiv("fcn-settings-content");
-        const page = pages[activePageIndex];
-        new Setting(content)
-            .setName(page.name ?? "")
-            .setDesc(page.desc ?? "")
-            .setHeading();
-        this.renderLegacySettingItems(content, page.items ?? []);
+    getSettingDefinitions(): SettingDefinitionItem[] {
+        return this.createSettingDefinitions();
     }
 
-    private renderLegacySettingItems(containerEl: HTMLElement, items: LegacySettingItem[]): void {
-        items.forEach(item => {
-            if (!this.isLegacySettingVisible(item.visible)) {
-                return;
-            }
-
-            if (item.control && item.name) {
-                this.renderLegacyControl(containerEl, item);
-                return;
-            }
-
-            if (item.render && item.name) {
-                const setting = new Setting(containerEl).setName(item.name);
-                if (item.desc) {
-                    setting.setDesc(item.desc);
-                }
-                item.render(setting);
-                return;
-            }
-
-            if (item.type === "page" && item.name) {
-                new Setting(containerEl).setName(item.name).setDesc(item.desc ?? "").setHeading();
-                this.renderLegacySettingItems(containerEl, item.items ?? []);
-                return;
-            }
-
-            if (item.type === "group" || item.type === "list") {
-                if (item.heading) {
-                    new Setting(containerEl).setName(item.heading).setHeading();
-                }
-                this.renderLegacySettingItems(containerEl, item.items ?? []);
-            }
-        });
+    getControlValue(key: string): unknown {
+        return this.readControlValue(key);
     }
 
-    private renderLegacyControl(containerEl: HTMLElement, definition: LegacySettingItem): void {
-        if (!definition.control || !definition.name) {
-            return;
-        }
-
-        const setting = new Setting(containerEl).setName(definition.name);
-        if (definition.desc) {
-            setting.setDesc(definition.desc);
-        }
-
-        const control = definition.control;
-        const currentValue = this.readControlValue(control.key);
-        const refreshAfterChange = [
-            "showRootFoldersAtTop",
-            "wrapItemNames",
-            "showFolderNotes",
-            "folderNoteMatchSpecialName",
-            "calendarMatchFrontmatter",
-            "calendarMatchFilename"
-        ].includes(control.key);
-        const onChange = (value: unknown): void => {
-            void this.setLegacyControlValue(control.key, value, refreshAfterChange);
-        };
-
-        switch (control.type) {
-            case "toggle":
-                setting.addToggle(toggle => toggle
-                    .setValue(Boolean(currentValue))
-                    .onChange(value => onChange(value)));
-                break;
-            case "dropdown":
-                setting.addDropdown(dropdown => {
-                    Object.entries(control.options).forEach(([value, label]) => dropdown.addOption(value, label));
-                    const selectedValue = typeof currentValue === "string"
-                        ? currentValue
-                        : Object.keys(control.options)[0];
-                    dropdown.setValue(selectedValue);
-                    dropdown.onChange(value => onChange(value));
-                });
-                break;
-            case "text":
-                setting.addText(text => {
-                    text.setValue(typeof currentValue === "string" ? currentValue : "");
-                    if (control.placeholder) {
-                        text.setPlaceholder(control.placeholder);
-                    }
-                    text.onChange(value => onChange(value));
-                });
-                break;
-            case "textarea":
-                setting.addTextArea(textarea => {
-                    textarea.setValue(typeof currentValue === "string" ? currentValue : "");
-                    textarea.inputEl.rows = control.rows ?? 3;
-                    if (control.placeholder) {
-                        textarea.setPlaceholder(control.placeholder);
-                    }
-                    textarea.onChange(value => onChange(value));
-                });
-                break;
-            case "slider":
-                setting.addSlider(slider => {
-                    const value = typeof currentValue === "number" && Number.isFinite(currentValue)
-                        ? currentValue
-                        : control.min;
-                    slider.setLimits(control.min, control.max, control.step).setValue(value);
-                    slider.onChange(value => onChange(value));
-                });
-                break;
-            case "number":
-                setting.addText(text => {
-                    text.setValue(typeof currentValue === "number" ? String(currentValue) : "");
-                    if (control.placeholder) {
-                        text.setPlaceholder(control.placeholder);
-                    }
-                    text.onChange(value => onChange(Number(value)));
-                });
-                break;
-            default:
-                break;
-        }
-    }
-
-    private isLegacySettingVisible(visible?: boolean | (() => boolean)): boolean {
-        return typeof visible === "function" ? visible() : visible !== false;
-    }
-
-    private async setLegacyControlValue(key: string, value: unknown, refresh: boolean): Promise<void> {
+    async setControlValue(key: string, value: unknown): Promise<void> {
         await this.applyControlValue(key, value);
-        if (refresh) {
-            this.refreshSettingsTab();
-        }
     }
 
     private refreshSettingsTab(): void {
-        const update: unknown = Reflect.get(this, "update");
-        if (typeof update === "function") {
-            Reflect.apply(update, this, []);
-            return;
-        }
-        this.renderLegacySettings();
+        this.update();
     }
 
-    private createSettingDefinitions(): LegacySettingItem[] {
+    private createSettingDefinitions(): SettingDefinitionItem[] {
         return [
             {
                 type: "page",
@@ -4278,10 +4062,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                 return;
         }
         await this.plugin.saveSettings();
-        const refreshDomState: unknown = Reflect.get(this, "refreshDomState");
-        if (typeof refreshDomState === "function") {
-            Reflect.apply(refreshDomState, this, []);
-        }
+        this.update();
     }
 
     private itemFontSlider(key: "rootFolderFontSize" | "fileNameFontSize") {
