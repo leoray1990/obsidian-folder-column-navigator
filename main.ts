@@ -7,7 +7,6 @@ import {
     Plugin,
     PluginSettingTab,
     Setting,
-    SettingDefinitionItem,
     SuggestModal,
     TAbstractFile,
     TFile,
@@ -40,6 +39,10 @@ const MIN_ITEM_NAME_WRAP_LINES = 1;
 const MAX_ITEM_NAME_WRAP_LINES = 6;
 const DEFAULT_ITEM_NAME_WRAP_LINES = 2;
 const DRAG_EXPAND_DELAY_MS = 500;
+const LEGACY_SETTINGS_RENDER_METHOD = "display";
+const DECLARATIVE_SETTINGS_METHOD = "getSettingDefinitions";
+const DECLARATIVE_GET_CONTROL_METHOD = "getControlValue";
+const DECLARATIVE_SET_CONTROL_METHOD = "setControlValue";
 
 type SortField = "name" | "modified" | "created";
 type SortDirection = "asc" | "desc";
@@ -171,7 +174,7 @@ type LegacySettingControl =
     | { key: string; type: "dropdown"; options: Record<string, string> }
     | { key: string; type: "text"; placeholder?: string }
     | { key: string; type: "textarea"; placeholder?: string; rows?: number }
-    | { key: string; type: "slider"; min: number; max: number; step: number }
+    | { key: string; type: "slider"; min: number; max: number; step: number; displayFormat?: (value: number) => string }
     | { key: string; type: "number"; placeholder?: string };
 
 interface LegacySettingItem {
@@ -182,7 +185,7 @@ interface LegacySettingItem {
     heading?: string;
     items?: LegacySettingItem[];
     control?: LegacySettingControl;
-    render?: (setting: Setting, group: unknown) => void;
+    render?: (setting: Setting, group?: unknown) => void;
 }
 
 function normalizeFolderPath(value: string): string {
@@ -837,7 +840,17 @@ export default class FolderColumnNavigator extends Plugin {
     }
 
     getFolder(path: string): TFolder | null {
-        return path === ROOT_PATH ? this.app.vault.getRoot() : this.app.vault.getFolderByPath(path);
+        if (path === ROOT_PATH) {
+            return this.app.vault.getRoot();
+        }
+        const vault = this.app.vault as typeof this.app.vault & {
+            getFolderByPath?: (folderPath: string) => TFolder | null;
+        };
+        if (typeof vault.getFolderByPath === "function") {
+            return vault.getFolderByPath(path);
+        }
+        const file = vault.getAbstractFileByPath(path);
+        return file instanceof TFolder ? file : null;
     }
 
     getNavigationEntries(): NavigationEntry[] {
@@ -1089,16 +1102,9 @@ class FolderColumnNavigatorView extends ItemView {
         this.containerEl.empty();
         this.containerEl.addClass("folder-column-navigator-view");
         this.viewContentEl = this.containerEl.closest<HTMLElement>(".view-content") ?? this.containerEl;
-        this.viewContentEl.style.setProperty("padding", "0", "important");
-        this.viewContentEl.style.setProperty("margin", "0", "important");
-        this.viewContentEl.style.setProperty("width", "100%", "important");
-        this.viewContentEl.style.setProperty("box-sizing", "border-box");
+        this.viewContentEl.addClass("fcn-view-content-reset");
         this.viewHostEl = this.containerEl.closest<HTMLElement>(".workspace-leaf-content");
         this.viewHostEl?.addClass("fcn-calendar-view-host");
-        this.viewHostEl?.style.setProperty("padding", "0", "important");
-        this.viewHostEl?.style.setProperty("margin", "0", "important");
-        this.viewHostEl?.style.setProperty("width", "100%", "important");
-        this.viewHostEl?.style.setProperty("background", "var(--background-secondary)", "important");
         this.containerEl.tabIndex = 0;
         this.resizeWidth = this.plugin.settings.navigationWidth;
 
@@ -1184,15 +1190,8 @@ class FolderColumnNavigatorView extends ItemView {
         }
         this.rootFolderResizeObserver?.disconnect();
         this.rootFolderResizeObserver = null;
-        this.viewContentEl?.style.removeProperty("padding");
-        this.viewContentEl?.style.removeProperty("margin");
-        this.viewContentEl?.style.removeProperty("width");
-        this.viewContentEl?.style.removeProperty("box-sizing");
+        this.viewContentEl?.removeClass("fcn-view-content-reset");
         this.viewContentEl = null;
-        this.viewHostEl?.style.removeProperty("padding");
-        this.viewHostEl?.style.removeProperty("margin");
-        this.viewHostEl?.style.removeProperty("width");
-        this.viewHostEl?.style.removeProperty("background");
         this.viewHostEl?.removeClass("fcn-calendar-view-host");
         this.viewHostEl = null;
         this.plugin.removeView(this);
@@ -1231,9 +1230,11 @@ class FolderColumnNavigatorView extends ItemView {
         if (!this.navigationEl || !this.columnsEl) {
             return;
         }
-        this.containerEl.style.setProperty("--fcn-root-folder-font-size", `${this.plugin.settings.rootFolderFontSize}px`);
-        this.containerEl.style.setProperty("--fcn-file-name-font-size", `${this.plugin.settings.fileNameFontSize}px`);
-        this.containerEl.style.setProperty("--fcn-item-name-max-lines", String(this.plugin.settings.wrapItemNameMaxLines));
+        this.containerEl.setCssProps({
+            "--fcn-root-folder-font-size": `${this.plugin.settings.rootFolderFontSize}px`,
+            "--fcn-file-name-font-size": `${this.plugin.settings.fileNameFontSize}px`,
+            "--fcn-item-name-max-lines": String(this.plugin.settings.wrapItemNameMaxLines)
+        });
         this.containerEl.toggleClass("fcn-wrap-item-names", this.plugin.settings.wrapItemNames);
         this.updateCalendarPane();
         this.repairColumnState();
@@ -1247,14 +1248,7 @@ class FolderColumnNavigatorView extends ItemView {
 
     private createCalendarPane(layout: HTMLElement): void {
         this.calendarPane = layout.createDiv("fcn-calendar-pane");
-        this.calendarPane.style.setProperty("background", "var(--background-secondary)", "important");
-        this.calendarPane.style.setProperty("align-self", "stretch");
-        this.calendarPane.style.setProperty("width", "100%", "important");
-        this.calendarPane.style.setProperty("box-sizing", "border-box");
         const header = this.calendarPane.createDiv("fcn-calendar-header");
-        header.style.setProperty("background", "var(--background-secondary)", "important");
-        header.style.setProperty("width", "100%", "important");
-        header.style.setProperty("box-sizing", "border-box");
         this.calendarToggleButton = header.createEl("button", {
             cls: "fcn-calendar-toggle",
             attr: { type: "button", "aria-expanded": "false" }
@@ -1677,9 +1671,6 @@ class FolderColumnNavigatorView extends ItemView {
         const firstVisibleDate = this.calendarDisplayMode === "week"
             ? firstDay
             : new Date(date.getFullYear(), date.getMonth(), 1 - leadingDays);
-        const daysInMonth = this.calendarDisplayMode === "week"
-            ? 7
-            : new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
         const rowCount = this.calendarDisplayMode === "week" ? 1 : 6;
         for (let row = 0; row < rowCount; row += 1) {
             const weekDate = new Date(firstVisibleDate);
@@ -1744,7 +1735,9 @@ class FolderColumnNavigatorView extends ItemView {
         this.createLocateButton(toolbarActions);
         this.createSettingsButton(toolbarActions);
         this.rootFolderGrid = topSection.createDiv("fcn-root-folder-grid");
-        this.rootFolderGrid.style.setProperty("--fcn-visible-root-rows", String(this.plugin.settings.rootFolderVisibleRows));
+        this.rootFolderGrid.setCssProps({
+            "--fcn-visible-root-rows": String(this.plugin.settings.rootFolderVisibleRows)
+        });
         rootFolders.forEach(entry => this.createNavigationRow(this.rootFolderGrid as HTMLElement, entry, "fcn-root-folder-item"));
         this.rootFolderExpandButton.addEventListener("click", () => {
             this.rootFoldersExpanded = !this.rootFoldersExpanded;
@@ -1854,7 +1847,7 @@ class FolderColumnNavigatorView extends ItemView {
         row.dataset.fcnRow = "navigation";
         row.dataset.fcnPath = entry.path;
         if (depth > 0) {
-            row.style.paddingLeft = `${7 + depth * 14}px`;
+            row.setCssStyles({ paddingLeft: `${7 + depth * 14}px` });
         }
 
         this.createItemIcon(row, entry.kind === "root" ? "vault" : isTopFolderTag ? null : this.getFolderIcon());
@@ -2127,9 +2120,11 @@ class FolderColumnNavigatorView extends ItemView {
         const column = this.columnsEl.createDiv("fcn-column");
         column.dataset.fcnColumn = String(columnIndex);
         column.dataset.fcnPath = path;
-        column.style.setProperty("--fcn-column-min-width", `${this.plugin.settings.columnMinWidth}px`);
-        column.style.setProperty("--fcn-column-max-width", `${this.plugin.settings.columnMaxWidth}px`);
-        column.style.setProperty("--fcn-column-width", `${this.getColumnWidth(path)}px`);
+        column.setCssProps({
+            "--fcn-column-min-width": `${this.plugin.settings.columnMinWidth}px`,
+            "--fcn-column-max-width": `${this.plugin.settings.columnMaxWidth}px`,
+            "--fcn-column-width": `${this.getColumnWidth(path)}px`
+        });
         const header = column.createDiv("fcn-column-header");
         header.createSpan({ text: folder.path === ROOT_PATH ? this.plugin.app.vault.getName() : folder.name });
         const filterQuery = this.getColumnFilterQuery(columnIndex);
@@ -2521,7 +2516,14 @@ class FolderColumnNavigatorView extends ItemView {
 
     private async deleteItem(item: TAbstractFile): Promise<void> {
         if (await this.plugin.app.fileManager.promptForDeletion(item)) {
-            await this.plugin.app.fileManager.trashFile(item);
+            const fileManager = this.plugin.app.fileManager as typeof this.plugin.app.fileManager & {
+                trashFile?: (file: TAbstractFile) => Promise<void>;
+            };
+            if (typeof fileManager.trashFile === "function") {
+                await fileManager.trashFile(item);
+            } else {
+                await this.plugin.app.vault.trash(item, false);
+            }
         }
     }
 
@@ -2536,7 +2538,14 @@ class FolderColumnNavigatorView extends ItemView {
                 new Notice("同名文件或目录已存在。", 3000);
                 return;
             }
-            await this.plugin.app.vault.createFolder(path);
+            const vault = this.plugin.app.vault as typeof this.plugin.app.vault & {
+                createFolder?: (folderPath: string) => Promise<TFolder>;
+            };
+            if (typeof vault.createFolder !== "function") {
+                new Notice("当前 Obsidian 版本不支持创建文件夹，请升级到 1.4.0 或更高版本。", 4000);
+                return;
+            }
+            await vault.createFolder(path);
         }, name => this.getDuplicateNameError(folder, name)).open();
     }
 
@@ -2615,7 +2624,7 @@ class FolderColumnNavigatorView extends ItemView {
         if (keys.length === 0) {
             return null;
         }
-        const frontmatter = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter as Record<string, unknown> | undefined;
+        const frontmatter = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter;
         const details = keys.map(key => {
             const value = this.formatMetadataValue(frontmatter?.[key]);
             return value ? (this.plugin.settings.showMetadataNames ? `${key}: ${value}` : value) : null;
@@ -2878,7 +2887,7 @@ class FolderColumnNavigatorView extends ItemView {
 
     private applyNavigationWidth(width: number): void {
         this.resizeWidth = clampNavigationWidth(width);
-        this.shellEl.style.gridTemplateColumns = `${this.resizeWidth}px 5px minmax(0, 1fr)`;
+        this.shellEl.setCssStyles({ gridTemplateColumns: `${this.resizeWidth}px 5px minmax(0, 1fr)` });
     }
 
     private startResize(event: PointerEvent): void {
@@ -2936,9 +2945,11 @@ class FolderColumnNavigatorView extends ItemView {
         if (this.columnWidths.has(path)) {
             this.columnWidths.set(path, width);
         }
-        column.style.setProperty("--fcn-column-min-width", `${this.plugin.settings.columnMinWidth}px`);
-        column.style.setProperty("--fcn-column-max-width", `${this.plugin.settings.columnMaxWidth}px`);
-        column.style.setProperty("--fcn-column-width", `${width}px`);
+        column.setCssProps({
+            "--fcn-column-min-width": `${this.plugin.settings.columnMinWidth}px`,
+            "--fcn-column-max-width": `${this.plugin.settings.columnMaxWidth}px`,
+            "--fcn-column-width": `${width}px`
+        });
     }
 
     private measureColumnContentWidth(column: HTMLElement): number {
@@ -2992,7 +3003,7 @@ class FolderColumnNavigatorView extends ItemView {
         this.columnWidths.set(resize.path, width);
         const column = Array.from(this.columnsEl.querySelectorAll<HTMLElement>(".fcn-column"))
             .find(item => item.dataset.fcnPath === resize.path);
-        column?.style.setProperty("--fcn-column-width", `${width}px`);
+        column?.setCssProps({ "--fcn-column-width": `${width}px` });
     };
 
     private readonly handleColumnResizeEnd = (): void => {
@@ -3578,51 +3589,101 @@ class FolderColumnNavigatorView extends ItemView {
 
 class FolderColumnNavigatorSettingTab extends PluginSettingTab {
     private readonly plugin: FolderColumnNavigatorPlugin;
+    private legacyActivePageIndex = 0;
 
     constructor(app: FolderColumnNavigatorPlugin["app"], plugin: FolderColumnNavigatorPlugin) {
         super(app, plugin);
         this.plugin = plugin;
+        Object.defineProperties(this, {
+            [LEGACY_SETTINGS_RENDER_METHOD]: {
+                configurable: true,
+                value: () => this.renderLegacySettings()
+            },
+            [DECLARATIVE_SETTINGS_METHOD]: {
+                configurable: true,
+                value: () => this.createSettingDefinitions()
+            },
+            [DECLARATIVE_GET_CONTROL_METHOD]: {
+                configurable: true,
+                value: (key: string) => this.readControlValue(key)
+            },
+            [DECLARATIVE_SET_CONTROL_METHOD]: {
+                configurable: true,
+                value: (key: string, value: unknown) => this.applyControlValue(key, value)
+            }
+        });
     }
 
-    display(): void {
+    private renderLegacySettings(): void {
         this.containerEl.empty();
         this.containerEl.addClass("fcn-settings-fallback");
         new Setting(this.containerEl).setName("目录文件列表").setHeading();
-        this.renderLegacySettingItems(this.containerEl, this.createSettingDefinitions());
+
+        const pages = this.createSettingDefinitions()
+            .filter(item => item.type === "page");
+        if (pages.length === 0) {
+            return;
+        }
+
+        const activePageIndex = Math.max(0, Math.min(this.legacyActivePageIndex, pages.length - 1));
+        this.legacyActivePageIndex = activePageIndex;
+        const tabs = this.containerEl.createDiv("fcn-settings-tabs");
+        pages.forEach((page, index) => {
+            const tab = tabs.createEl("button", {
+                text: page.name ?? "",
+                cls: "fcn-settings-tab",
+                attr: {
+                    type: "button",
+                    "aria-selected": String(index === activePageIndex)
+                }
+            });
+            tab.toggleClass("is-active", index === activePageIndex);
+            tab.addEventListener("click", () => {
+                this.legacyActivePageIndex = index;
+                this.renderLegacySettings();
+            });
+        });
+
+        const content = this.containerEl.createDiv("fcn-settings-content");
+        const page = pages[activePageIndex];
+        new Setting(content)
+            .setName(page.name ?? "")
+            .setDesc(page.desc ?? "")
+            .setHeading();
+        this.renderLegacySettingItems(content, page.items ?? []);
     }
 
-    private renderLegacySettingItems(containerEl: HTMLElement, items: SettingDefinitionItem[]): void {
+    private renderLegacySettingItems(containerEl: HTMLElement, items: LegacySettingItem[]): void {
         items.forEach(item => {
-            const legacyItem = item as unknown as LegacySettingItem;
-            if (!this.isLegacySettingVisible(legacyItem.visible)) {
+            if (!this.isLegacySettingVisible(item.visible)) {
                 return;
             }
 
-            if (legacyItem.control && legacyItem.name) {
-                this.renderLegacyControl(containerEl, legacyItem);
+            if (item.control && item.name) {
+                this.renderLegacyControl(containerEl, item);
                 return;
             }
 
-            if (legacyItem.render && legacyItem.name) {
-                const setting = new Setting(containerEl).setName(legacyItem.name);
-                if (legacyItem.desc) {
-                    setting.setDesc(legacyItem.desc);
+            if (item.render && item.name) {
+                const setting = new Setting(containerEl).setName(item.name);
+                if (item.desc) {
+                    setting.setDesc(item.desc);
                 }
-                legacyItem.render(setting, undefined);
+                item.render(setting);
                 return;
             }
 
-            if (legacyItem.type === "page" && legacyItem.name) {
-                new Setting(containerEl).setName(legacyItem.name).setDesc(legacyItem.desc ?? "").setHeading();
-                this.renderLegacySettingItems(containerEl, (legacyItem.items ?? []) as unknown as SettingDefinitionItem[]);
+            if (item.type === "page" && item.name) {
+                new Setting(containerEl).setName(item.name).setDesc(item.desc ?? "").setHeading();
+                this.renderLegacySettingItems(containerEl, item.items ?? []);
                 return;
             }
 
-            if (legacyItem.type === "group" || legacyItem.type === "list") {
-                if (legacyItem.heading) {
-                    new Setting(containerEl).setName(legacyItem.heading).setHeading();
+            if (item.type === "group" || item.type === "list") {
+                if (item.heading) {
+                    new Setting(containerEl).setName(item.heading).setHeading();
                 }
-                this.renderLegacySettingItems(containerEl, (legacyItem.items ?? []) as unknown as SettingDefinitionItem[]);
+                this.renderLegacySettingItems(containerEl, item.items ?? []);
             }
         });
     }
@@ -3638,7 +3699,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
         }
 
         const control = definition.control;
-        const currentValue = this.getControlValue(control.key);
+        const currentValue = this.readControlValue(control.key);
         const refreshAfterChange = [
             "showRootFoldersAtTop",
             "wrapItemNames",
@@ -3714,27 +3775,22 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
     }
 
     private async setLegacyControlValue(key: string, value: unknown, refresh: boolean): Promise<void> {
-        await this.setControlValue(key, value);
+        await this.applyControlValue(key, value);
         if (refresh) {
-            this.refreshSettingsView();
+            this.refreshSettingsTab();
         }
     }
 
-    private refreshSettingsView(): void {
+    private refreshSettingsTab(): void {
         const update: unknown = Reflect.get(this, "update");
         if (typeof update === "function") {
             Reflect.apply(update, this, []);
             return;
         }
-
-        this.display();
+        this.renderLegacySettings();
     }
 
-    getSettingDefinitions(): SettingDefinitionItem[] {
-        return this.createSettingDefinitions();
-    }
-
-    private createSettingDefinitions(): SettingDefinitionItem[] {
+    private createSettingDefinitions(): LegacySettingItem[] {
         return [
             {
                 type: "page",
@@ -3772,7 +3828,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                 .addButton(button => button.setButtonText("添加").setCta().onClick(() => {
                                     void this.plugin.addCustomFolder(inputValue).then(added => {
                                         if (added) {
-                                            this.refreshSettingsView();
+                                            this.refreshSettingsTab();
                                         }
                                     });
                                 }));
@@ -3788,10 +3844,10 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                 setting
                                     .addButton(button => button
                                         .setButtonText(this.plugin.isPinned(folder.path) ? "取消置顶" : "置顶")
-                                        .onClick(() => void this.plugin.togglePinned(folder.path).then(() => this.refreshSettingsView())))
+                                        .onClick(() => void this.plugin.togglePinned(folder.path).then(() => this.refreshSettingsTab())))
                                     .addButton(button => button
                                         .setButtonText(this.plugin.settings.hiddenRootPaths.includes(folder.path) ? "显示" : "隐藏")
-                                        .onClick(() => void this.plugin.toggleHiddenRoot(folder.path).then(() => this.refreshSettingsView())));
+                                        .onClick(() => void this.plugin.toggleHiddenRoot(folder.path).then(() => this.refreshSettingsTab())));
                             }
                         }))
                     },
@@ -3811,11 +3867,11 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                             .onChange(value => void this.plugin.updateCustomFolderDisplayName(path, value)))
                                         .addButton(button => button
                                             .setButtonText(this.plugin.isPinned(path) ? "取消置顶" : "置顶")
-                                        .onClick(() => void this.plugin.togglePinned(path).then(() => this.refreshSettingsView())))
+                                        .onClick(() => void this.plugin.togglePinned(path).then(() => this.refreshSettingsTab())))
                                         .addExtraButton(button => button
                                             .setIcon("trash")
                                             .setTooltip("移除自定义目录")
-                                            .onClick(() => void this.plugin.removeCustomFolder(path).then(() => this.refreshSettingsView())));
+                                            .onClick(() => void this.plugin.removeCustomFolder(path).then(() => this.refreshSettingsTab())));
                                 }
                             };
                         })
@@ -4101,7 +4157,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
         ];
     }
 
-    getControlValue(key: string): unknown {
+    private readControlValue(key: string): unknown {
         if (key === "hiddenPatternsText") {
             return this.plugin.settings.hiddenPatterns.join("\n");
         }
@@ -4129,7 +4185,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
         return this.plugin.settings[key as keyof FolderColumnNavigatorSettings];
     }
 
-    async setControlValue(key: string, value: unknown): Promise<void> {
+    private async applyControlValue(key: string, value: unknown): Promise<void> {
         switch (key) {
             case "showRootFoldersAtTop":
             case "wrapItemNames":

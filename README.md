@@ -8,6 +8,13 @@ It is built for fast keyboard browsing: use `↑` `↓` `←` `→` to move, `En
 
 > This plugin works entirely inside your vault. It does not send data over the network and does not collect telemetry.
 
+## Compatibility
+
+- Minimum Obsidian version: **1.4.0**.
+- Obsidian 1.13.0 and later use the native categorized settings navigation.
+- Obsidian 1.4.0–1.12.x use the plugin's built-in compatible settings page, so the same settings remain available on older desktop and mobile versions. Native settings search and native category navigation are only available from 1.13.0.
+- Versions older than 1.4.0 are not supported because the plugin relies on the public folder-creation API introduced in 1.4.0.
+
 ## Highlights
 
 - Two layouts: a left-hand root-folder list or root folders displayed as top tags.
@@ -77,6 +84,13 @@ Open the view from the ribbon folder icon, or run **Open Folder Column Navigator
 ---
 
 # 中文说明
+## 兼容性
+
+- 最低 Obsidian 版本：**1.4.0**。
+- Obsidian 1.13.0 及以上版本使用原生的分类设置导航。
+- Obsidian 1.4.0–1.12.x 使用插件内置的兼容设置页，桌面端和移动端仍可使用完整配置；原生设置搜索和原生分类导航需要 1.13.0 及以上版本。
+- 低于 1.4.0 的版本缺少插件创建子文件夹所需的公开 API，因此不在支持范围内。
+
 ## 它解决什么问题
 
 Obsidian 自带文件列表适合查看完整目录树，但在层级较深的仓库里，频繁展开、收起和横向寻找目录会打断阅读节奏。

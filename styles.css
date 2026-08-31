@@ -6,8 +6,18 @@
     overflow: hidden;
 }
 
+.view-content.fcn-view-content-reset {
+    padding: 0;
+    margin: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+
 .workspace-leaf-content.fcn-calendar-view-host {
     padding: 0;
+    margin: 0;
+    width: 100%;
+    box-sizing: border-box;
     background: var(--background-secondary);
 }
 
@@ -50,6 +60,9 @@
 .fcn-calendar-pane {
     flex: 0 0 auto;
     min-height: 0;
+    align-self: stretch;
+    width: 100%;
+    box-sizing: border-box;
     border-top: 1px solid var(--fcn-divider);
     background: var(--background-secondary);
 }
@@ -62,6 +75,8 @@
     display: flex;
     align-items: center;
     min-height: 34px;
+    width: 100%;
+    box-sizing: border-box;
     padding: 0 12px;
     border-bottom: 1px solid var(--background-modifier-border);
     background: var(--background-secondary);
