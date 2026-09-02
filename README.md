@@ -146,7 +146,7 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 
 - 显示或隐藏目录子项数量、文件类型缩写等元信息。
 - 一级目录与文件树的独立字号。
-- 文件夹图标：文件夹、右箭头或不显示。
+- 文件夹图标：文件夹、右箭头或不显示；选择文件夹图标时，展开和未展开状态会使用不同图标。
 - 文件图标：通用图标、按常见文件类型显示或不显示。
 - 隐藏文件扩展名；不会影响右侧可单独关闭的类型缩写。
 - 目录与文件名称左对齐。
@@ -241,6 +241,8 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 | 文件列最小/最大宽度 | 限制拖拽文件列时的宽度范围 |
 | 文件夹图标 / 文件图标 | 分别控制文件夹、文件的图标样式；垂直展开时文件夹图标会显示打开/关闭状态 |
 | 分组 | 按指定属性分组；支持逗号分隔值或 YAML 数组，普通多值只取第一个；只要任一值命中归档名称就归入底部“归档”分组，没有任何有效分组信息时不显示分组标题，缺少属性的条目归入“其他” |
+| 启用悬浮预览 | 开关文件和目录的悬浮预览 |
+| 悬浮预览文件夹笔记 | 控制鼠标悬停目录时是否预览对应的文件夹笔记 |
 | 悬浮预览延迟 | 配置鼠标悬停后显示预览的延迟，范围 350ms–2s，默认 500ms |
 | 添加自定义目录 | 添加非一级目录到导航区域，并可设置显示名称 |
 | 显示扩展菜单项 | 控制是否显示由 Obsidian 或其他插件通过 `file-menu` 添加的右键菜单项 |
@@ -272,7 +274,8 @@ Folder Column Navigator adds a Finder-style multi-column navigator to Obsidian. 
 - Drag files or folders onto a destination folder; hovering for about half a second reveals and expands it before drop.
 - Name, modified-time, and created-time sorting in ascending or descending order.
 - Optional property-based grouping; configurable archive values are shown as a collapsed “归档” group at the bottom.
-- Configurable item metadata, icons, font sizes, folder-note priority, extension visibility, and Glob-based hiding.
+- Configurable item metadata, icons with open/closed folder states, font sizes, folder-note priority, extension visibility, and Glob-based hiding.
+- Optional hover previews for files and folder notes, with a configurable delay.
 - Filterable context menus for files and folders.
 - Immediate duplicate-name validation when creating or renaming files and folders.
 

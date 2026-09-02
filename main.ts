@@ -46,6 +46,8 @@ const ARCHIVE_GROUP_KEY = "__fcn_archive__";
 const MIN_HOVER_PREVIEW_DELAY_MS = 350;
 const MAX_HOVER_PREVIEW_DELAY_MS = 2000;
 const DEFAULT_HOVER_PREVIEW_DELAY_MS = 500;
+const DEFAULT_HOVER_PREVIEW_ENABLED = true;
+const DEFAULT_HOVER_PREVIEW_FOLDER_NOTES = true;
 const HOVER_PREVIEW_CLOSE_DELAY_MS = 900;
 const MIN_VERTICAL_TREE_COLUMNS = 2;
 const MAX_VERTICAL_TREE_COLUMNS = 8;
@@ -65,6 +67,10 @@ interface FolderColumnNavigatorSettings {
     rootFolderOrder: string[];
     navigationOrder: string[];
     hiddenPatterns: string[];
+    /** Whether mouse hover opens the native-style content preview. */
+    enableHoverPreview: boolean;
+    /** Whether hovering a folder previews its detected folder note. */
+    hoverPreviewFolderNotes: boolean;
     hoverPreviewDelayMs: number;
     rootFolderFontSize: number;
     fileNameFontSize: number;
@@ -125,6 +131,8 @@ const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
     rootFolderOrder: [],
     navigationOrder: [],
     hiddenPatterns: [],
+    enableHoverPreview: DEFAULT_HOVER_PREVIEW_ENABLED,
+    hoverPreviewFolderNotes: DEFAULT_HOVER_PREVIEW_FOLDER_NOTES,
     hoverPreviewDelayMs: DEFAULT_HOVER_PREVIEW_DELAY_MS,
     rootFolderFontSize: DEFAULT_ROOT_FOLDER_FONT_SIZE,
     fileNameFontSize: DEFAULT_FILE_NAME_FONT_SIZE,
@@ -732,6 +740,12 @@ export default class FolderColumnNavigator extends Plugin {
             rootFolderOrder: this.cleanPathList(saved?.rootFolderOrder).filter(path => path !== ROOT_PATH),
             navigationOrder: this.cleanPathList(saved?.navigationOrder).filter(path => path !== ROOT_PATH),
             hiddenPatterns: cleanGlobPatternList(saved?.hiddenPatterns),
+            enableHoverPreview: typeof saved?.enableHoverPreview === "boolean"
+                ? saved.enableHoverPreview
+                : DEFAULT_SETTINGS.enableHoverPreview,
+            hoverPreviewFolderNotes: typeof saved?.hoverPreviewFolderNotes === "boolean"
+                ? saved.hoverPreviewFolderNotes
+                : DEFAULT_SETTINGS.hoverPreviewFolderNotes,
             hoverPreviewDelayMs: clampHoverPreviewDelay(saved?.hoverPreviewDelayMs),
             rootFolderFontSize: clampItemFontSize(saved?.rootFolderFontSize, DEFAULT_ROOT_FOLDER_FONT_SIZE),
             fileNameFontSize: clampItemFontSize(saved?.fileNameFontSize, DEFAULT_FILE_NAME_FONT_SIZE),
@@ -1398,6 +1412,9 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     refresh(): void {
+        if (!this.plugin.settings.enableHoverPreview) {
+            this.closeHoverPreview();
+        }
         if (this.isStandaloneCalendar) {
             this.updateCalendarPane();
             this.ensureCalendar();
@@ -1964,21 +1981,40 @@ class FolderColumnNavigatorView extends ItemView {
         setIcon(icon, iconName);
     }
 
-    private getFolderIcon(): string | null {
+    /**
+     * Resolve a folder icon from the folder's current expansion state.
+     * Regular columns use the next column as the source of truth, while the
+     * vertical tree uses its explicit expanded-path set.
+     */
+    private getFolderStateIcon(folder: TFolder, columnIndex?: number): string | null {
         if (this.plugin.settings.folderIconStyle === "none") {
             return null;
         }
-        return this.plugin.settings.folderIconStyle === "chevron" ? "chevron-right" : "folder";
+        const isExpanded = columnIndex !== undefined
+            ? this.isVerticalTreeColumn(columnIndex)
+                ? this.verticalTreeExpandedPaths.has(folder.path)
+                : this.columnPaths[columnIndex + 1] === folder.path
+            : this.navigationBasePath === folder.path;
+        if (this.plugin.settings.folderIconStyle === "chevron") {
+            return isExpanded ? "chevron-down" : "chevron-right";
+        }
+        return isExpanded ? "folder-open" : "folder-closed";
     }
 
+    /**
+     * Resolve the folder icon used by the vertical tree. Its expanded state is
+     * independent of the horizontal column path, so do not infer it from a
+     * sibling column that may have been recycled during a refresh.
+     */
     private getVerticalTreeFolderIcon(folder: TFolder): string | null {
         if (this.plugin.settings.folderIconStyle === "none") {
             return null;
         }
+        const isExpanded = this.verticalTreeExpandedPaths.has(folder.path);
         if (this.plugin.settings.folderIconStyle === "chevron") {
-            return this.verticalTreeExpandedPaths.has(folder.path) ? "chevron-down" : "chevron-right";
+            return isExpanded ? "chevron-down" : "chevron-right";
         }
-        return this.verticalTreeExpandedPaths.has(folder.path) ? "folder-open" : "folder";
+        return isExpanded ? "folder-open" : "folder-closed";
     }
 
     private getFolderNoteIcon(): string | null {
@@ -2040,14 +2076,28 @@ class FolderColumnNavigatorView extends ItemView {
             row.setCssStyles({ paddingLeft: `${7 + depth * 14}px` });
         }
 
-        this.createItemIcon(row, entry.kind === "root" ? "vault" : isTopFolderTag ? null : this.getFolderIcon());
         const folder = entry.kind === "root" ? null : this.plugin.getFolder(entry.path);
+        const isCustomFolderShortcut = entry.kind === "custom" && this.plugin.settings.customFolders.includes(entry.path);
+        const customFolderDisplayName = isCustomFolderShortcut
+            ? this.plugin.settings.customFolderNames[entry.path]?.trim() ?? ""
+            : "";
+        this.createItemIcon(
+            row,
+            entry.kind === "root" || isTopFolderTag || !folder
+                ? entry.kind === "root" ? "vault" : null
+                : this.getFolderStateIcon(folder)
+        );
         row.createSpan({
-            text: folder
+            // A non-empty custom label wins; clearing it falls back to the
+            // configured folder-note property (usually the first alias).
+            text: folder && !customFolderDisplayName
                 ? this.getItemDisplayName(folder, entry.name, this.plugin.settings.useRootFolderPropertyNames)
                 : entry.name,
             cls: "fcn-item-name"
         });
+        if (folder && this.plugin.settings.hoverPreviewFolderNotes) {
+            this.bindHoverPreview(row, this.getFolderNote(folder, true));
+        }
 
         row.addEventListener("click", () => this.selectNavigationPath(entry.path));
         row.addEventListener("contextmenu", event => {
@@ -2635,16 +2685,26 @@ class FolderColumnNavigatorView extends ItemView {
         }
         row.toggleClass("is-selected", this.isFolderSelected(folder.path, columnIndex));
         row.setAttribute("tabindex", "0");
-        const iconName = this.isVerticalTreeColumn(columnIndex)
+        const isVerticalTreeFolder = this.isVerticalTreeColumn(columnIndex);
+        const isExpanded = isVerticalTreeFolder
+            ? this.verticalTreeExpandedPaths.has(folder.path)
+            : this.columnPaths[columnIndex + 1] === folder.path;
+        row.toggleClass("fcn-folder-expanded", isExpanded);
+        row.toggleClass("fcn-folder-collapsed", !isExpanded);
+        row.setAttribute("aria-expanded", String(isExpanded));
+        const iconName = isVerticalTreeFolder
             ? this.getVerticalTreeFolderIcon(folder)
-            : this.getFolderIcon();
+            : this.getFolderStateIcon(folder, columnIndex);
         this.createItemIcon(row, iconName);
         const folderNote = this.getFolderNote(folder);
         this.createItemContent(row, this.getItemDisplayName(folder, folder.name, this.plugin.settings.useFolderTreePropertyNames), folderNote ? this.getFrontmatterDetail(
             folderNote,
             this.plugin.settings.folderNoteMetadataKeys
         ) : null);
-        this.bindHoverPreview(row, folderNote);
+        this.bindHoverPreview(
+            row,
+            this.plugin.settings.hoverPreviewFolderNotes ? this.getFolderNote(folder, true) : null
+        );
         if (this.plugin.settings.showItemMetadata) {
             const visibleChildCount = folder.children.filter(child => !this.plugin.isHiddenByPattern(child.path)).length;
             row.createSpan({ text: `${visibleChildCount}`, cls: "fcn-item-meta" });
@@ -2738,7 +2798,7 @@ class FolderColumnNavigatorView extends ItemView {
         row.setAttribute("tabindex", "0");
         const iconName = isFolderNote ? this.getFolderNoteIcon() : this.getFileIcon(file);
         this.createItemIcon(row, iconName);
-        if (this.plugin.settings.alignFileTreeNames && this.getFolderIcon() && !iconName) {
+        if (this.plugin.settings.alignFileTreeNames && this.plugin.settings.folderIconStyle !== "none" && !iconName) {
             row.createSpan("fcn-item-icon fcn-item-icon-placeholder");
         }
         this.createItemContent(row, this.getItemDisplayName(file, this.getFileDisplayName(file), this.plugin.settings.useFilePropertyNames), this.getFileDetail(file));
@@ -2771,7 +2831,7 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private bindHoverPreview(row: HTMLElement, file: TFile | null): void {
-        if (!file) {
+        if (!this.plugin.settings.enableHoverPreview || !file) {
             return;
         }
         row.addEventListener("mouseenter", event => this.scheduleHoverPreview(row, file, event as MouseEvent));
@@ -3335,9 +3395,9 @@ class FolderColumnNavigatorView extends ItemView {
     private getFileDetail(file: TFile): string | null {
         const details = [this.getFrontmatterDetail(file, this.plugin.settings.fileMetadataKeys)];
         if (this.plugin.settings.fileDateDisplay === "created") {
-            details.push(`创建于 ${formatCalendarDate(new Date(file.stat.ctime))}`);
+            details.push(formatCalendarDate(new Date(file.stat.ctime)));
         } else if (this.plugin.settings.fileDateDisplay === "modified") {
-            details.push(`修改于 ${formatCalendarDate(new Date(file.stat.mtime))}`);
+            details.push(formatCalendarDate(new Date(file.stat.mtime)));
         }
         const visibleDetails = details.filter((detail): detail is string => Boolean(detail));
         return visibleDetails.length > 0 ? visibleDetails.join(" · ") : null;
@@ -4407,6 +4467,20 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
         this.update();
     }
 
+    /** Render the custom-folder marker as an icon while keeping its path searchable. */
+    private createCustomFolderDescription(path: string): DocumentFragment {
+        const fragment = document.createDocumentFragment();
+        const description = document.createElement("span");
+        description.addClass("fcn-settings-list-description");
+        const icon = document.createElement("span");
+        icon.addClass("fcn-settings-list-description-icon");
+        icon.setAttribute("aria-label", "自定义目录");
+        setIcon(icon, "bookmark");
+        description.append(icon, document.createTextNode(path));
+        fragment.append(description);
+        return fragment;
+    }
+
     private createSettingDefinitions(): SettingDefinitionItem[] {
         return [
             {
@@ -4503,12 +4577,15 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                         emptyState: "还没有可展示的目录。",
                         items: this.plugin.getNavigationSettingsEntries().map(entry => ({
                             name: entry.name,
-                            desc: entry.kind === "custom" ? `自定义目录 · ${entry.path}` : entry.path,
+                            desc: entry.kind === "custom"
+                                ? this.createCustomFolderDescription(entry.path)
+                                : entry.path,
                             render: setting => {
                                 if (entry.kind === "root-folder") {
                                     setting
-                                        .addButton(button => button
-                                            .setButtonText(this.plugin.settings.hiddenRootPaths.includes(entry.path) ? "显示" : "隐藏")
+                                        .addExtraButton(button => button
+                                            .setIcon(this.plugin.settings.hiddenRootPaths.includes(entry.path) ? "eye" : "eye-off")
+                                            .setTooltip(this.plugin.settings.hiddenRootPaths.includes(entry.path) ? "显示一级目录" : "隐藏一级目录")
                                             .onClick(() => void this.plugin.toggleHiddenRoot(entry.path).then(() => this.refreshSettingsTab())));
                                     return;
                                 }
@@ -4651,8 +4728,20 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                         heading: "交互",
                         items: [
                             {
+                                name: "启用悬浮预览",
+                                desc: "鼠标停留在文件或目录上时显示内容预览。",
+                                control: { type: "toggle", key: "enableHoverPreview" }
+                            },
+                            {
+                                name: "悬浮预览文件夹笔记",
+                                desc: "鼠标停留在目录上时，预览该目录识别到的文件夹笔记。",
+                                visible: () => this.plugin.settings.enableHoverPreview,
+                                control: { type: "toggle", key: "hoverPreviewFolderNotes" }
+                            },
+                            {
                                 name: "悬浮预览延迟",
                                 desc: "鼠标停留在文件或文件夹笔记上多久后显示预览；范围 350ms–2s，默认 500ms。",
+                                visible: () => this.plugin.settings.enableHoverPreview,
                                 control: {
                                     type: "slider",
                                     key: "hoverPreviewDelayMs",
@@ -4711,7 +4800,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                         items: [
                             {
                                 name: "文件夹图标",
-                                desc: "可保留文件夹图标（垂直展开时使用打开/关闭状态）、显示右箭头（>）或完全隐藏。",
+                                desc: "可保留文件夹图标（展开时显示打开状态，未展开时显示关闭状态）、显示右箭头（>）或完全隐藏。",
                                 control: {
                                     type: "dropdown",
                                     key: "folderIconStyle",
@@ -4939,6 +5028,8 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
             case "verticalTreeCollapseSiblings":
             case "wrapItemNames":
             case "showMetadataNames":
+            case "enableHoverPreview":
+            case "hoverPreviewFolderNotes":
             case "useRootFolderPropertyNames":
             case "useFolderTreePropertyNames":
             case "useFilePropertyNames":

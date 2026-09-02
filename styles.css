@@ -1302,6 +1302,23 @@
     margin-top: 12px;
 }
 
+.fcn-settings-list-description {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.fcn-settings-list-description-icon {
+    display: inline-flex;
+    flex: 0 0 auto;
+    color: var(--text-faint);
+}
+
+.fcn-settings-list-description-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
 .fcn-item-name {
     min-width: 0;
     flex: 1;
