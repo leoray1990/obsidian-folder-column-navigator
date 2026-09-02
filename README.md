@@ -18,6 +18,7 @@ It is built for fast keyboard browsing: use `↑` `↓` `←` `→` to move, `En
 
 - Two layouts: a left-hand root-folder list or root folders displayed as top tags.
 - Finder-style column browsing: opening a folder adds a column for its direct children.
+- Optional vertical tree mode: after the configured maximum number of horizontal columns, deeper levels expand as a tree inside the last column (default maximum: 4 columns).
 - Keyboard-first navigation across root folders, file columns, and filterable context menus.
 - Per-column pinyin-aware filtering for English, numbers, Chinese characters, initials, full pinyin, and mixed pinyin queries.
 - File-list-like sorting, item metadata, configurable icons, font sizes, widths, and hiding rules.
@@ -35,7 +36,7 @@ Use the top layout to dedicate the entire lower area to the file tree while keep
 
 ### Left navigation / 左侧一级目录列
 
-Keep root folders pinned on the left, with the selected folder and its child columns visible together.
+Keep root folders ordered on the left, with the selected folder and its child columns visible together.
 
 ![Left-side root-folder navigation](images/left-layout-navigation.png)
 
@@ -117,13 +118,15 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 两种布局都支持：
 
 - 拖拽调整一级目录顺序。
-- 在设置中置顶或隐藏一级目录。
+- 在设置中调整一级目录顺序或隐藏一级目录。
 - 添加任意层级的自定义目录，并为它设置独立显示名称。
 - 使用“定位当前笔记”跳转并展开当前编辑器笔记所在的目录链。
 
 ### Finder 风格多列文件树
 
 - 单击文件夹，在右侧新增一列展示它的直属子项。
+- 可选开启“深层目录纵向展开”：超过配置的最大水平列数后，后续层级会在最后一列以内按树形垂直展开，默认最多保留 4 列水平目录。
+- 垂直目录树默认保留同级展开状态，也可以开启“展开时折叠兄弟目录”切换为单分支浏览。
 - 单击文件，直接打开笔记；已打开的笔记会复用现有标签页。
 - 每一列保留返回上一级入口，并能独立拖动调整宽度。
 - 文件列宽度默认按内容计算；可在设置中设定最小和最大宽度。
@@ -236,7 +239,9 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 | 隐藏文件后缀名 | 只隐藏显示名称的后缀，不影响类型缩写设置 |
 | 隐藏规则 | 按 Glob 规则隐藏文件和目录 |
 | 文件列最小/最大宽度 | 限制拖拽文件列时的宽度范围 |
-| 文件夹图标 / 文件图标 | 分别控制文件夹、文件的图标样式 |
+| 文件夹图标 / 文件图标 | 分别控制文件夹、文件的图标样式；垂直展开时文件夹图标会显示打开/关闭状态 |
+| 分组 | 按指定属性分组；支持逗号分隔值或 YAML 数组，普通多值只取第一个；只要任一值命中归档名称就归入底部“归档”分组，没有任何有效分组信息时不显示分组标题，缺少属性的条目归入“其他” |
+| 悬浮预览延迟 | 配置鼠标悬停后显示预览的延迟，范围 350ms–2s，默认 500ms |
 | 添加自定义目录 | 添加非一级目录到导航区域，并可设置显示名称 |
 | 显示扩展菜单项 | 控制是否显示由 Obsidian 或其他插件通过 `file-menu` 添加的右键菜单项 |
 | 日历 | 分别控制创建日期、修改日期、文件属性、文件名的日期匹配规则，并编辑属性名和文件名格式 |
@@ -266,6 +271,7 @@ Folder Column Navigator adds a Finder-style multi-column navigator to Obsidian. 
 - After moving a file or folder, automatically reveal and expand its destination folder while retaining keyboard focus.
 - Drag files or folders onto a destination folder; hovering for about half a second reveals and expands it before drop.
 - Name, modified-time, and created-time sorting in ascending or descending order.
+- Optional property-based grouping; configurable archive values are shown as a collapsed “归档” group at the bottom.
 - Configurable item metadata, icons, font sizes, folder-note priority, extension visibility, and Glob-based hiding.
 - Filterable context menus for files and folders.
 - Immediate duplicate-name validation when creating or renaming files and folders.

@@ -1,6 +1,9 @@
 import {
+    AbstractInputSuggest,
     FileView,
+    HoverPopover,
     ItemView,
+    MarkdownRenderer,
     Menu,
     Modal,
     Notice,
@@ -39,6 +42,14 @@ const MIN_ITEM_NAME_WRAP_LINES = 1;
 const MAX_ITEM_NAME_WRAP_LINES = 6;
 const DEFAULT_ITEM_NAME_WRAP_LINES = 2;
 const DRAG_EXPAND_DELAY_MS = 500;
+const ARCHIVE_GROUP_KEY = "__fcn_archive__";
+const MIN_HOVER_PREVIEW_DELAY_MS = 350;
+const MAX_HOVER_PREVIEW_DELAY_MS = 2000;
+const DEFAULT_HOVER_PREVIEW_DELAY_MS = 500;
+const HOVER_PREVIEW_CLOSE_DELAY_MS = 900;
+const MIN_VERTICAL_TREE_COLUMNS = 2;
+const MAX_VERTICAL_TREE_COLUMNS = 8;
+const DEFAULT_VERTICAL_TREE_COLUMNS = 4;
 
 type SortField = "name" | "modified" | "created";
 type SortDirection = "asc" | "desc";
@@ -48,12 +59,13 @@ type CalendarDisplayMode = "month" | "week" | "year";
 type FileDateDisplay = "none" | "created" | "modified";
 
 interface FolderColumnNavigatorSettings {
-    pinnedPaths: string[];
     hiddenRootPaths: string[];
     customFolders: string[];
     customFolderNames: Record<string, string>;
     rootFolderOrder: string[];
+    navigationOrder: string[];
     hiddenPatterns: string[];
+    hoverPreviewDelayMs: number;
     rootFolderFontSize: number;
     fileNameFontSize: number;
     wrapItemNames: boolean;
@@ -66,13 +78,26 @@ interface FolderColumnNavigatorSettings {
     folderNoteMetadataKeys: string[];
     fileMetadataKeys: string[];
     showMetadataNames: boolean;
+    usePropertyDisplayNames: boolean;
+    itemDisplayProperty: string;
+    useRootFolderPropertyNames: boolean;
+    useFolderTreePropertyNames: boolean;
+    useFilePropertyNames: boolean;
     fileDateDisplay: FileDateDisplay;
     hideFileExtensions: boolean;
     navigationWidth: number;
     sortField: SortField;
     sortDirection: SortDirection;
+    groupItems: boolean;
+    groupProperty: string;
+    groupArchiveNames: string[];
+    groupSortDirection: SortDirection;
+    pinnedGroups: string[];
     showRootFoldersAtTop: boolean;
     rootFolderVisibleRows: number;
+    verticalTreeEnabled: boolean;
+    verticalTreeMaxColumns: number;
+    verticalTreeCollapseSiblings: boolean;
     showItemMetadata: boolean;
     showExtensionMenuItems: boolean;
     folderIconStyle: FolderIconStyle;
@@ -94,12 +119,13 @@ interface FolderColumnNavigatorSettings {
 }
 
 const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
-    pinnedPaths: [],
     hiddenRootPaths: [],
     customFolders: [],
     customFolderNames: {},
     rootFolderOrder: [],
+    navigationOrder: [],
     hiddenPatterns: [],
+    hoverPreviewDelayMs: DEFAULT_HOVER_PREVIEW_DELAY_MS,
     rootFolderFontSize: DEFAULT_ROOT_FOLDER_FONT_SIZE,
     fileNameFontSize: DEFAULT_FILE_NAME_FONT_SIZE,
     wrapItemNames: false,
@@ -112,13 +138,26 @@ const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
     folderNoteMetadataKeys: [],
     fileMetadataKeys: [],
     showMetadataNames: false,
+    usePropertyDisplayNames: false,
+    itemDisplayProperty: "aliases",
+    useRootFolderPropertyNames: false,
+    useFolderTreePropertyNames: false,
+    useFilePropertyNames: false,
     fileDateDisplay: "none",
     hideFileExtensions: false,
     navigationWidth: DEFAULT_NAVIGATION_WIDTH,
     sortField: "name",
     sortDirection: "asc",
+    groupItems: false,
+    groupProperty: "",
+    groupArchiveNames: ["archive"],
+    groupSortDirection: "asc",
+    pinnedGroups: [],
     showRootFoldersAtTop: false,
     rootFolderVisibleRows: 2,
+    verticalTreeEnabled: false,
+    verticalTreeMaxColumns: DEFAULT_VERTICAL_TREE_COLUMNS,
+    verticalTreeCollapseSiblings: false,
     showItemMetadata: true,
     showExtensionMenuItems: true,
     folderIconStyle: "folder",
@@ -143,6 +182,13 @@ interface NavigationEntry {
     path: string;
     name: string;
     kind: "root" | "root-folder" | "custom";
+}
+
+interface ItemGroup {
+    key: string;
+    label: string;
+    items: TAbstractFile[];
+    isArchive: boolean;
 }
 
 type FilterScope =
@@ -192,6 +238,18 @@ function clampItemNameWrapLines(value: unknown): number {
         : DEFAULT_ITEM_NAME_WRAP_LINES;
 }
 
+function clampVerticalTreeColumns(value: unknown): number {
+    return typeof value === "number"
+        ? Math.max(MIN_VERTICAL_TREE_COLUMNS, Math.min(MAX_VERTICAL_TREE_COLUMNS, Math.round(value)))
+        : DEFAULT_VERTICAL_TREE_COLUMNS;
+}
+
+function clampHoverPreviewDelay(value: unknown): number {
+    return typeof value === "number"
+        ? Math.max(MIN_HOVER_PREVIEW_DELAY_MS, Math.min(MAX_HOVER_PREVIEW_DELAY_MS, Math.round(value)))
+        : DEFAULT_HOVER_PREVIEW_DELAY_MS;
+}
+
 function cleanCustomFolderNames(value: unknown): Record<string, string> {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
         return {};
@@ -228,10 +286,6 @@ function isFileIconStyle(value: unknown): value is FileIconStyle {
 
 function isFileDateDisplay(value: unknown): value is FileDateDisplay {
     return value === "none" || value === "created" || value === "modified";
-}
-
-function isDirectRootFolder(folder: TFolder): boolean {
-    return folder.parent?.path === ROOT_PATH;
 }
 
 function compareNames(a: { name: string }, b: { name: string }): number {
@@ -350,6 +404,36 @@ class FolderDestinationModal extends SuggestModal<TFolder> {
     onChooseSuggestion(folder: TFolder): void {
         this.close();
         void this.onChooseFolder(folder);
+    }
+}
+
+class FolderPathInputSuggest extends AbstractInputSuggest<TFolder> {
+    constructor(
+        app: FolderColumnNavigatorPlugin["app"],
+        inputEl: HTMLInputElement,
+        private readonly onSelectFolder: (folder: TFolder) => void
+    ) {
+        super(app, inputEl);
+        this.limit = 100;
+    }
+
+    protected getSuggestions(query: string): TFolder[] {
+        const normalizedQuery = query.trim();
+        return this.app.vault.getAllLoadedFiles()
+            .filter((item): item is TFolder => item instanceof TFolder)
+            .filter(folder => folder.path !== ROOT_PATH)
+            .filter(folder => !normalizedQuery || filterNameMatches(folder.path, normalizedQuery))
+            .sort((left, right) => compareNames({ name: left.path }, { name: right.path }));
+    }
+
+    renderSuggestion(folder: TFolder, el: HTMLElement): void {
+        el.setText(folder.path);
+    }
+
+    selectSuggestion(folder: TFolder, _evt: MouseEvent | KeyboardEvent): void {
+        this.setValue(folder.path);
+        this.onSelectFolder(folder);
+        this.close();
     }
 }
 
@@ -574,6 +658,7 @@ export default class FolderColumnNavigator extends Plugin {
     settings: FolderColumnNavigatorSettings = { ...DEFAULT_SETTINGS };
     private readonly views = new Set<FolderColumnNavigatorView>();
     private readonly hiddenPatternMatchers = new Map<string, RegExp>();
+    private settingsTab: FolderColumnNavigatorSettingTab | null = null;
 
     async onload(): Promise<void> {
         await this.loadSettings();
@@ -588,10 +673,15 @@ export default class FolderColumnNavigator extends Plugin {
             this.views.add(view);
             return view;
         });
+        this.registerHoverLinkSource("folder-column-navigator", {
+            display: "目录文件列表",
+            defaultMod: false
+        });
 
         this.registerEvent(this.app.vault.on("create", () => this.refreshViews()));
         this.registerEvent(this.app.vault.on("delete", () => this.refreshViews()));
         this.registerEvent(this.app.vault.on("rename", () => this.refreshViews()));
+        this.registerEvent(this.app.metadataCache.on("resolved", () => this.refreshViews()));
 
         this.addRibbonIcon("folder-tree", "打开目录文件列表", () => {
             void this.activateView();
@@ -611,15 +701,22 @@ export default class FolderColumnNavigator extends Plugin {
             name: "打开独立日历视图",
             callback: () => void this.activateCalendarView()
         });
-        this.addSettingTab(new FolderColumnNavigatorSettingTab(this.app, this));
+        this.settingsTab = new FolderColumnNavigatorSettingTab(this.app, this);
+        this.addSettingTab(this.settingsTab);
+        window.setTimeout(() => this.settingsTab?.update(), 0);
     }
 
     onunload(): void {
         this.views.clear();
+        this.settingsTab = null;
     }
 
     async loadSettings(): Promise<void> {
-        const saved = (await this.loadData()) as Partial<FolderColumnNavigatorSettings> | null;
+        const saved = (await this.loadData()) as (Partial<FolderColumnNavigatorSettings> & { pinnedPaths?: unknown }) | null;
+        const { pinnedPaths: _legacyPinnedPaths, ...storedSettings } = saved ?? {};
+        const legacyPropertyDisplayNames = typeof saved?.usePropertyDisplayNames === "boolean"
+            ? saved.usePropertyDisplayNames
+            : DEFAULT_SETTINGS.usePropertyDisplayNames;
         const legacyCalendarPresentation = (saved as { calendarPresentation?: unknown } | null)?.calendarPresentation;
         const columnMinWidth = clampConfigurableColumnWidth(saved?.columnMinWidth, DEFAULT_COLUMN_MIN_WIDTH);
         const columnMaxWidth = Math.max(
@@ -628,13 +725,14 @@ export default class FolderColumnNavigator extends Plugin {
         );
         this.settings = {
             ...DEFAULT_SETTINGS,
-            ...saved,
-            pinnedPaths: this.cleanPathList(saved?.pinnedPaths),
+            ...storedSettings,
             hiddenRootPaths: this.cleanPathList(saved?.hiddenRootPaths),
             customFolders: this.cleanPathList(saved?.customFolders).filter(path => path !== ROOT_PATH),
             customFolderNames: cleanCustomFolderNames(saved?.customFolderNames),
             rootFolderOrder: this.cleanPathList(saved?.rootFolderOrder).filter(path => path !== ROOT_PATH),
+            navigationOrder: this.cleanPathList(saved?.navigationOrder).filter(path => path !== ROOT_PATH),
             hiddenPatterns: cleanGlobPatternList(saved?.hiddenPatterns),
+            hoverPreviewDelayMs: clampHoverPreviewDelay(saved?.hoverPreviewDelayMs),
             rootFolderFontSize: clampItemFontSize(saved?.rootFolderFontSize, DEFAULT_ROOT_FOLDER_FONT_SIZE),
             fileNameFontSize: clampItemFontSize(saved?.fileNameFontSize, DEFAULT_FILE_NAME_FONT_SIZE),
             wrapItemNames: typeof saved?.wrapItemNames === "boolean"
@@ -659,6 +757,21 @@ export default class FolderColumnNavigator extends Plugin {
             showMetadataNames: typeof saved?.showMetadataNames === "boolean"
                 ? saved.showMetadataNames
                 : DEFAULT_SETTINGS.showMetadataNames,
+            usePropertyDisplayNames: typeof saved?.usePropertyDisplayNames === "boolean"
+                ? saved.usePropertyDisplayNames
+                : DEFAULT_SETTINGS.usePropertyDisplayNames,
+            itemDisplayProperty: typeof saved?.itemDisplayProperty === "string"
+                ? saved.itemDisplayProperty.trim()
+                : DEFAULT_SETTINGS.itemDisplayProperty,
+            useRootFolderPropertyNames: typeof saved?.useRootFolderPropertyNames === "boolean"
+                ? saved.useRootFolderPropertyNames
+                : legacyPropertyDisplayNames,
+            useFolderTreePropertyNames: typeof saved?.useFolderTreePropertyNames === "boolean"
+                ? saved.useFolderTreePropertyNames
+                : legacyPropertyDisplayNames,
+            useFilePropertyNames: typeof saved?.useFilePropertyNames === "boolean"
+                ? saved.useFilePropertyNames
+                : legacyPropertyDisplayNames,
             fileDateDisplay: isFileDateDisplay(saved?.fileDateDisplay)
                 ? saved.fileDateDisplay
                 : DEFAULT_SETTINGS.fileDateDisplay,
@@ -670,12 +783,30 @@ export default class FolderColumnNavigator extends Plugin {
             ),
             sortField: isSortField(saved?.sortField) ? saved.sortField : DEFAULT_SETTINGS.sortField,
             sortDirection: isSortDirection(saved?.sortDirection) ? saved.sortDirection : DEFAULT_SETTINGS.sortDirection,
+            groupItems: typeof saved?.groupItems === "boolean"
+                ? saved.groupItems
+                : DEFAULT_SETTINGS.groupItems,
+            groupProperty: typeof saved?.groupProperty === "string"
+                ? saved.groupProperty.trim()
+                : DEFAULT_SETTINGS.groupProperty,
+            groupArchiveNames: cleanTextList(saved?.groupArchiveNames),
+            groupSortDirection: isSortDirection(saved?.groupSortDirection)
+                ? saved.groupSortDirection
+                : DEFAULT_SETTINGS.groupSortDirection,
+            pinnedGroups: cleanTextList(saved?.pinnedGroups),
             showRootFoldersAtTop: typeof saved?.showRootFoldersAtTop === "boolean"
                 ? saved.showRootFoldersAtTop
                 : DEFAULT_SETTINGS.showRootFoldersAtTop,
             rootFolderVisibleRows: typeof saved?.rootFolderVisibleRows === "number"
                 ? Math.max(1, Math.min(8, Math.round(saved.rootFolderVisibleRows)))
                 : DEFAULT_SETTINGS.rootFolderVisibleRows,
+            verticalTreeEnabled: typeof saved?.verticalTreeEnabled === "boolean"
+                ? saved.verticalTreeEnabled
+                : DEFAULT_SETTINGS.verticalTreeEnabled,
+            verticalTreeMaxColumns: clampVerticalTreeColumns(saved?.verticalTreeMaxColumns),
+            verticalTreeCollapseSiblings: typeof saved?.verticalTreeCollapseSiblings === "boolean"
+                ? saved.verticalTreeCollapseSiblings
+                : DEFAULT_SETTINGS.verticalTreeCollapseSiblings,
             showItemMetadata: typeof saved?.showItemMetadata === "boolean"
                 ? saved.showItemMetadata
                 : DEFAULT_SETTINGS.showItemMetadata,
@@ -718,6 +849,10 @@ export default class FolderColumnNavigator extends Plugin {
             calendarFileExtensions: cleanFileExtensionList(saved?.calendarFileExtensions)
         };
 
+        const rootFolderPaths = new Set(this.getRootFolders().map(folder => folder.path));
+        this.settings.customFolders = this.settings.customFolders.filter(path => !rootFolderPaths.has(path));
+        this.settings.navigationOrder = this.settings.navigationOrder.filter(path => !rootFolderPaths.has(path) || this.settings.rootFolderOrder.includes(path));
+
         if (this.settings.calendarFrontmatterKeys.length === 0 && saved?.calendarFrontmatterKeys === undefined) {
             this.settings.calendarFrontmatterKeys = [...DEFAULT_SETTINGS.calendarFrontmatterKeys];
         }
@@ -729,6 +864,9 @@ export default class FolderColumnNavigator extends Plugin {
         }
         if (this.settings.folderNoteSpecialNames.length === 0 && saved?.folderNoteSpecialNames === undefined) {
             this.settings.folderNoteSpecialNames = [...DEFAULT_SETTINGS.folderNoteSpecialNames];
+        }
+        if (this.settings.groupArchiveNames.length === 0 && saved?.groupArchiveNames === undefined) {
+            this.settings.groupArchiveNames = [...DEFAULT_SETTINGS.groupArchiveNames];
         }
     }
 
@@ -786,10 +924,16 @@ export default class FolderColumnNavigator extends Plugin {
     }
 
     getRootFolders(): TFolder[] {
-        const folders = this.app.vault
-            .getRoot()
-            .children.filter((child): child is TFolder => child instanceof TFolder && isDirectRootFolder(child))
-            .sort(compareNames);
+        const foldersByPath = new Map<string, TFolder>();
+        [
+            ...this.app.vault.getRoot().children,
+            ...this.app.vault.getAllLoadedFiles()
+        ].forEach(child => {
+            if (child instanceof TFolder && child.path !== ROOT_PATH && !child.path.includes("/")) {
+                foldersByPath.set(child.path, child);
+            }
+        });
+        const folders = [...foldersByPath.values()].sort(compareNames);
         const order = new Map(this.settings.rootFolderOrder.map((path, index) => [path, index]));
         return folders.sort((a, b) => {
             const aIndex = order.get(a.path);
@@ -801,18 +945,28 @@ export default class FolderColumnNavigator extends Plugin {
         });
     }
 
-    async reorderRootFolders(draggedPath: string, targetPath: string, insertAfter: boolean): Promise<void> {
-        if (draggedPath === targetPath) {
-            return;
-        }
-        const paths = this.getRootFolders().map(folder => folder.path);
-        if (!paths.includes(draggedPath) || !paths.includes(targetPath)) {
-            return;
-        }
-        const reordered = paths.filter(path => path !== draggedPath);
-        const targetIndex = reordered.indexOf(targetPath);
-        reordered.splice(targetIndex + (insertAfter ? 1 : 0), 0, draggedPath);
-        this.settings.rootFolderOrder = reordered;
+    getNavigationOrder(): string[] {
+        const rootPaths = this.getRootFolders().map(folder => folder.path);
+        const customPaths = this.settings.customFolders;
+        const available = new Set([...rootPaths, ...customPaths]);
+        const preferred = this.settings.navigationOrder.length > 0
+            ? this.settings.navigationOrder
+            : [...this.settings.rootFolderOrder, ...this.settings.customFolders];
+        const ordered = preferred.filter((path, index) => available.has(path) && preferred.indexOf(path) === index);
+        return [...ordered, ...available].filter((path, index, paths) => paths.indexOf(path) === index);
+    }
+
+    async reorderNavigationEntries(paths: string[]): Promise<void> {
+        const rootPaths = new Set(this.getRootFolders().map(folder => folder.path));
+        const customPaths = new Set(this.settings.customFolders);
+        const available = new Set([...rootPaths, ...customPaths]);
+        const reordered = [
+            ...paths.filter((path, index) => available.has(path) && paths.indexOf(path) === index),
+            ...this.getNavigationOrder().filter(path => !paths.includes(path) && available.has(path))
+        ];
+        this.settings.navigationOrder = reordered;
+        this.settings.rootFolderOrder = reordered.filter(path => rootPaths.has(path));
+        this.settings.customFolders = reordered.filter(path => customPaths.has(path));
         await this.saveSettings();
     }
 
@@ -820,7 +974,12 @@ export default class FolderColumnNavigator extends Plugin {
         if (path === ROOT_PATH) {
             return this.app.vault.getRoot();
         }
-        return this.app.vault.getFolderByPath(path);
+        const folder = this.app.vault.getFolderByPath(path);
+        if (folder) {
+            return folder;
+        }
+        const abstractFile = this.app.vault.getAbstractFileByPath(path);
+        return abstractFile instanceof TFolder ? abstractFile : null;
     }
 
     getNavigationEntries(): NavigationEntry[] {
@@ -846,38 +1005,38 @@ export default class FolderColumnNavigator extends Plugin {
         const byPath = new Map<string, NavigationEntry>();
         [...rootEntries, ...customEntries].forEach(entry => byPath.set(entry.path, entry));
         const entries = [...byPath.values()];
-        const pinned = new Set(this.settings.pinnedPaths);
-        const rootOrder = new Map(rootEntries.map((entry, index) => [entry.path, index]));
+        const navigationOrder = new Map(this.getNavigationOrder().map((path, index) => [path, index]));
         entries.sort((a, b) => {
-            const pinDifference = Number(pinned.has(b.path)) - Number(pinned.has(a.path));
-            if (pinDifference) {
-                return pinDifference;
-            }
-            if (a.kind === "root-folder" && b.kind === "root-folder") {
-                return (rootOrder.get(a.path) ?? 0) - (rootOrder.get(b.path) ?? 0);
-            }
-            return compareNames(a, b);
+            const orderDifference = (navigationOrder.get(a.path) ?? Number.MAX_SAFE_INTEGER) -
+                (navigationOrder.get(b.path) ?? Number.MAX_SAFE_INTEGER);
+            return orderDifference || compareNames(a, b);
         });
 
         return [{ path: ROOT_PATH, name: this.app.vault.getName(), kind: "root" }, ...entries];
     }
 
-    isPinned(path: string): boolean {
-        return this.settings.pinnedPaths.includes(path);
-    }
-
-    async togglePinned(path: string): Promise<void> {
-        if (path === ROOT_PATH) {
-            return;
-        }
-        const pinned = new Set(this.settings.pinnedPaths);
-        if (pinned.has(path)) {
-            pinned.delete(path);
-        } else {
-            pinned.add(path);
-        }
-        this.settings.pinnedPaths = [...pinned];
-        await this.saveSettings();
+    getNavigationSettingsEntries(): NavigationEntry[] {
+        const entries = new Map<string, NavigationEntry>();
+        this.getRootFolders().forEach(folder => entries.set(folder.path, {
+            path: folder.path,
+            name: folder.name,
+            kind: "root-folder"
+        }));
+        this.settings.customFolders.forEach(path => {
+            const folder = this.getFolder(path);
+            const fallbackName = path.split("/").filter(Boolean).pop() ?? path;
+            entries.set(path, {
+                path,
+                name: this.getCustomFolderDisplayName(path, folder?.name ?? fallbackName),
+                kind: "custom"
+            });
+        });
+        const order = new Map(this.getNavigationOrder().map((path, index) => [path, index]));
+        return [...entries.values()].sort((left, right) => {
+            const orderDifference = (order.get(left.path) ?? Number.MAX_SAFE_INTEGER) -
+                (order.get(right.path) ?? Number.MAX_SAFE_INTEGER);
+            return orderDifference || compareNames(left, right);
+        });
     }
 
     async toggleHiddenRoot(path: string): Promise<void> {
@@ -891,16 +1050,39 @@ export default class FolderColumnNavigator extends Plugin {
         await this.saveSettings();
     }
 
+    isGroupPinned(groupKey: string): boolean {
+        return this.settings.pinnedGroups.includes(groupKey);
+    }
+
+    async toggleGroupPinned(groupKey: string): Promise<void> {
+        if (!groupKey) {
+            return;
+        }
+        const pinned = new Set(this.settings.pinnedGroups);
+        if (pinned.has(groupKey)) {
+            pinned.delete(groupKey);
+        } else {
+            pinned.add(groupKey);
+        }
+        this.settings.pinnedGroups = [...pinned];
+        await this.saveSettings();
+    }
+
     async addCustomFolder(input: string): Promise<boolean> {
         const path = normalizeFolderPath(input);
-        if (path === ROOT_PATH || !this.getFolder(path)) {
-            new Notice("请输入仓库中存在的目录路径。目录层级用 / 分隔。", 4000);
+        const folder = this.getFolder(path);
+        const isRootFolder = folder ? this.getRootFolders().some(item => item.path === folder.path) : false;
+        if (path === ROOT_PATH || !folder || isRootFolder) {
+            new Notice(isRootFolder
+                ? "一级目录会自动显示，不需要重复添加为自定义目录。"
+                : "请输入仓库中存在的目录路径。目录层级用 / 分隔。", 4000);
             return false;
         }
         if (this.settings.customFolders.includes(path)) {
             return false;
         }
         this.settings.customFolders.push(path);
+        this.settings.navigationOrder = [...this.getNavigationOrder().filter(item => item !== path), path];
         await this.saveSettings();
         return true;
     }
@@ -926,7 +1108,7 @@ export default class FolderColumnNavigator extends Plugin {
 
     async removeCustomFolder(path: string): Promise<void> {
         this.settings.customFolders = this.settings.customFolders.filter(item => item !== path);
-        this.settings.pinnedPaths = this.settings.pinnedPaths.filter(item => item !== path);
+        this.settings.navigationOrder = this.settings.navigationOrder.filter(item => item !== path);
         const names = { ...this.settings.customFolderNames };
         delete names[path];
         this.settings.customFolderNames = names;
@@ -935,6 +1117,7 @@ export default class FolderColumnNavigator extends Plugin {
 
     refreshViews(): void {
         this.views.forEach(view => view.refresh());
+        this.settingsTab?.update();
     }
 
     removeView(view: FolderColumnNavigatorView): void {
@@ -1021,7 +1204,7 @@ class FolderColumnNavigatorView extends ItemView {
     private rootFolderExpandButton: HTMLButtonElement | null = null;
     private rootFoldersExpanded = false;
     private rootFolderResizeObserver: ResizeObserver | null = null;
-    private draggedRootFolderPath: string | null = null;
+    private draggedNavigationPath: string | null = null;
     private draggedItemPath: string | null = null;
     private dragHoverTargetPath: string | null = null;
     private dragExpandedTargetPath: string | null = null;
@@ -1033,6 +1216,9 @@ class FolderColumnNavigatorView extends ItemView {
     private filterState: FilterState | null = null;
     private readonly columnWidths = new Map<string, number>();
     private readonly columnPreferredWidths = new Map<string, number>();
+    private readonly verticalTreeExpandedPaths = new Set<string>();
+    private readonly expandedArchiveGroups = new Set<string>();
+    private verticalTreeWasEnabled = false;
     private lastFocusedRow: { area: "navigation" | "column"; path: string; columnIndex?: number; kind?: string } | null = null;
     private readonly childColumnSelections = new Map<string, { childPath: string; itemPath: string; kind?: string }>();
     private readonly navigationPositions = new Map<string, NavigationPosition>();
@@ -1046,6 +1232,12 @@ class FolderColumnNavigatorView extends ItemView {
     private contextMenuFilter = "";
     private contextMenuFilterEl: HTMLElement | null = null;
     private contextMenuActiveIndex = 0;
+    private readonly hoverParent: { hoverPopover: HoverPopover | null } = { hoverPopover: null };
+    private hoverPopover: HoverPopover | null = null;
+    private hoverPreviewTimer: number | null = null;
+    private hoverPreviewFallbackTimer: number | null = null;
+    private hoverPreviewCloseTimer: number | null = null;
+    private hoverPreviewToken = 0;
 
     constructor(
         leaf: WorkspaceLeaf,
@@ -1150,6 +1342,7 @@ class FolderColumnNavigatorView extends ItemView {
         this.stopColumnResize();
         this.clearItemDragState();
         this.closeContextMenu(false);
+        this.closeHoverPreview();
         this.calendar?.destroy();
         this.calendar = null;
         this.calendarResizeObserver?.disconnect();
@@ -1171,13 +1364,19 @@ class FolderColumnNavigatorView extends ItemView {
     getState(): Record<string, unknown> {
         return {
             navigationBasePath: this.navigationBasePath,
-            columnPaths: this.columnPaths
+            columnPaths: this.columnPaths,
+            verticalTreeExpandedPaths: [...this.verticalTreeExpandedPaths]
         };
     }
 
     async setState(state: unknown, result: ViewStateResult): Promise<void> {
         if (typeof state === "object" && state !== null) {
-            const next = state as { navigationBasePath?: unknown; columnPaths?: unknown; selectedPath?: unknown };
+            const next = state as {
+                navigationBasePath?: unknown;
+                columnPaths?: unknown;
+                selectedPath?: unknown;
+                verticalTreeExpandedPaths?: unknown;
+            };
             const basePath = typeof next.navigationBasePath === "string"
                 ? next.navigationBasePath
                 : typeof next.selectedPath === "string" ? next.selectedPath : ROOT_PATH;
@@ -1185,6 +1384,14 @@ class FolderColumnNavigatorView extends ItemView {
                 ? next.columnPaths.filter((path): path is string => typeof path === "string")
                 : [basePath];
             this.setColumnState(basePath, paths);
+            this.verticalTreeExpandedPaths.clear();
+            if (Array.isArray(next.verticalTreeExpandedPaths)) {
+                next.verticalTreeExpandedPaths
+                    .filter((path): path is string => typeof path === "string")
+                    .filter(path => Boolean(this.plugin.getFolder(path)))
+                    .forEach(path => this.verticalTreeExpandedPaths.add(path));
+            }
+            this.syncVerticalTreeExpansionFromColumnPaths();
         }
         await super.setState(state, result);
         this.refresh();
@@ -1208,6 +1415,10 @@ class FolderColumnNavigatorView extends ItemView {
         this.containerEl.toggleClass("fcn-wrap-item-names", this.plugin.settings.wrapItemNames);
         this.updateCalendarPane();
         this.repairColumnState();
+        if (this.plugin.settings.verticalTreeEnabled && !this.verticalTreeWasEnabled) {
+            this.syncVerticalTreeExpansionFromColumnPaths();
+        }
+        this.verticalTreeWasEnabled = this.plugin.settings.verticalTreeEnabled;
         this.shellEl.toggleClass("fcn-root-top-mode", this.plugin.settings.showRootFoldersAtTop);
         this.topRootFolderPane.toggleClass("is-visible", this.plugin.settings.showRootFoldersAtTop);
         this.renderNavigation();
@@ -1669,11 +1880,10 @@ class FolderColumnNavigatorView extends ItemView {
 
         const entries = this.plugin.getNavigationEntries();
         const rootEntry = entries[0];
-        const rootFolders = entries.filter(entry => entry.kind === "root-folder");
-        const customEntries = entries.filter(entry => entry.kind === "custom");
+        const navigableEntries = entries.filter(entry => entry.kind !== "root");
 
         if (this.plugin.settings.showRootFoldersAtTop) {
-            this.renderTopRootFolders(rootEntry, [...rootFolders, ...customEntries]);
+            this.renderTopRootFolders(rootEntry, navigableEntries);
             return;
         }
 
@@ -1761,6 +1971,16 @@ class FolderColumnNavigatorView extends ItemView {
         return this.plugin.settings.folderIconStyle === "chevron" ? "chevron-right" : "folder";
     }
 
+    private getVerticalTreeFolderIcon(folder: TFolder): string | null {
+        if (this.plugin.settings.folderIconStyle === "none") {
+            return null;
+        }
+        if (this.plugin.settings.folderIconStyle === "chevron") {
+            return this.verticalTreeExpandedPaths.has(folder.path) ? "chevron-down" : "chevron-right";
+        }
+        return this.verticalTreeExpandedPaths.has(folder.path) ? "folder-open" : "folder";
+    }
+
     private getFolderNoteIcon(): string | null {
         return this.plugin.settings.folderIconStyle === "none" ? null : "bookmark";
     }
@@ -1821,7 +2041,13 @@ class FolderColumnNavigatorView extends ItemView {
         }
 
         this.createItemIcon(row, entry.kind === "root" ? "vault" : isTopFolderTag ? null : this.getFolderIcon());
-        row.createSpan({ text: entry.name, cls: "fcn-item-name" });
+        const folder = entry.kind === "root" ? null : this.plugin.getFolder(entry.path);
+        row.createSpan({
+            text: folder
+                ? this.getItemDisplayName(folder, entry.name, this.plugin.settings.useRootFolderPropertyNames)
+                : entry.name,
+            cls: "fcn-item-name"
+        });
 
         row.addEventListener("click", () => this.selectNavigationPath(entry.path));
         row.addEventListener("contextmenu", event => {
@@ -1835,32 +2061,31 @@ class FolderColumnNavigatorView extends ItemView {
                 this.showNavigationMenu(event);
             }
         });
-        const folder = this.plugin.getFolder(entry.path);
         if (folder) {
-            this.enableMoveDropTarget(row, folder, entry.kind === "root-folder");
+            this.enableMoveDropTarget(row, folder, entry.kind === "root-folder" || entry.kind === "custom");
         }
-        if (entry.kind === "root-folder") {
-            this.enableRootFolderDragging(row, entry.path);
-        } else if (folder && entry.kind !== "root") {
-            this.enableItemDragging(row, folder);
+        if (entry.kind === "root-folder" || entry.kind === "custom") {
+            this.enableNavigationEntryDragging(row, entry.path);
         }
         return row;
     }
 
-    private enableRootFolderDragging(row: HTMLElement, path: string): void {
+    private enableNavigationEntryDragging(row: HTMLElement, path: string): void {
         row.draggable = true;
         row.addClass("fcn-root-folder-draggable");
         row.addEventListener("dragstart", event => {
-            const folder = this.plugin.getFolder(path);
-            if (!folder) {
-                return;
+            this.clearNavigationDragState();
+            this.clearItemDragState();
+            this.draggedNavigationPath = path;
+            if (event.dataTransfer) {
+                event.dataTransfer.effectAllowed = "move";
+                event.dataTransfer.setData("application/x-folder-column-navigator-navigation-path", path);
+                event.dataTransfer.setData("text/plain", path);
             }
-            this.startItemDrag(row, folder, event);
-            this.draggedRootFolderPath = path;
             row.addClass("is-root-folder-dragging");
         });
         row.addEventListener("dragover", event => {
-            if (!this.draggedRootFolderPath || this.draggedRootFolderPath === path) {
+            if (!this.draggedNavigationPath || this.draggedNavigationPath === path) {
                 return;
             }
             event.preventDefault();
@@ -1876,18 +2101,25 @@ class FolderColumnNavigatorView extends ItemView {
             row.removeClass("is-root-folder-drop-before", "is-root-folder-drop-after");
         });
         row.addEventListener("drop", event => {
-            const draggedPath = this.draggedRootFolderPath;
+            const draggedPath = this.draggedNavigationPath;
             if (!draggedPath || draggedPath === path) {
                 return;
             }
             event.preventDefault();
             const insertAfter = this.isRootFolderDropAfter(row, event);
-            this.clearRootFolderDragState();
+            const navigationOrder = this.plugin.getNavigationOrder().filter(item => item !== draggedPath);
+            const targetIndex = navigationOrder.indexOf(path);
+            if (targetIndex < 0) {
+                this.clearNavigationDragState();
+                return;
+            }
+            navigationOrder.splice(targetIndex + (insertAfter ? 1 : 0), 0, draggedPath);
+            this.clearNavigationDragState();
             this.clearItemDragState();
-            void this.plugin.reorderRootFolders(draggedPath, path, insertAfter);
+            void this.plugin.reorderNavigationEntries(navigationOrder);
         });
         row.addEventListener("dragend", () => {
-            this.clearRootFolderDragState();
+            this.clearNavigationDragState();
             this.clearItemDragState();
         });
     }
@@ -1906,11 +2138,11 @@ class FolderColumnNavigatorView extends ItemView {
         row.addClass(this.isRootFolderDropAfter(row, event) ? "is-root-folder-drop-after" : "is-root-folder-drop-before");
     }
 
-    private clearRootFolderDragState(): void {
+    private clearNavigationDragState(): void {
         this.containerEl.querySelectorAll<HTMLElement>(
             ".is-root-folder-dragging, .is-root-folder-drop-before, .is-root-folder-drop-after"
         ).forEach(item => item.removeClass("is-root-folder-dragging", "is-root-folder-drop-before", "is-root-folder-drop-after"));
-        this.draggedRootFolderPath = null;
+        this.draggedNavigationPath = null;
     }
 
     private enableItemDragging(row: HTMLElement, item: TAbstractFile): void {
@@ -1921,6 +2153,7 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private startItemDrag(row: HTMLElement, item: TAbstractFile, event: DragEvent): void {
+        this.clearNavigationDragState();
         this.clearItemDragState();
         this.draggedItemPath = item.path;
         row.addClass("is-item-dragging");
@@ -1933,7 +2166,7 @@ class FolderColumnNavigatorView extends ItemView {
 
     private enableMoveDropTarget(row: HTMLElement, folder: TFolder, isRootFolderReorderTarget = false): void {
         row.addEventListener("dragover", event => {
-            if (isRootFolderReorderTarget && this.draggedRootFolderPath) {
+            if (isRootFolderReorderTarget && this.draggedNavigationPath) {
                 return;
             }
             const item = this.getDraggedItem();
@@ -1955,7 +2188,7 @@ class FolderColumnNavigatorView extends ItemView {
             this.cancelDragTargetExpansion(folder.path);
         });
         row.addEventListener("drop", event => {
-            if (isRootFolderReorderTarget && this.draggedRootFolderPath) {
+            if (isRootFolderReorderTarget && this.draggedNavigationPath) {
                 return;
             }
             const item = this.getDraggedItem();
@@ -2077,8 +2310,40 @@ class FolderColumnNavigatorView extends ItemView {
 
     private renderColumns(): void {
         this.columnsEl.empty();
-        this.columnPaths.forEach((path, columnIndex) => this.renderColumn(path, columnIndex));
+        const columnCount = this.getRenderedColumnCount();
+        this.columnPaths.slice(0, columnCount).forEach((path, columnIndex) => this.renderColumn(path, columnIndex));
+        this.activeColumnIndex = Math.max(0, Math.min(this.activeColumnIndex, columnCount - 1));
         window.requestAnimationFrame(() => this.ensureColumnVisible(this.activeColumnIndex));
+    }
+
+    private getRenderedColumnCount(): number {
+        if (!this.plugin.settings.verticalTreeEnabled ||
+            this.columnPaths.length <= this.plugin.settings.verticalTreeMaxColumns) {
+            return this.columnPaths.length;
+        }
+        return this.plugin.settings.verticalTreeMaxColumns;
+    }
+
+    private syncVerticalTreeExpansionFromColumnPaths(): void {
+        this.columnPaths
+            .slice(this.plugin.settings.verticalTreeMaxColumns)
+            .forEach(path => {
+                if (this.plugin.getFolder(path)) {
+                    this.verticalTreeExpandedPaths.add(path);
+                }
+            });
+    }
+
+    private isVerticalTreeColumn(columnIndex: number): boolean {
+        return this.plugin.settings.verticalTreeEnabled &&
+            this.columnPaths.length > this.plugin.settings.verticalTreeMaxColumns &&
+            columnIndex === this.plugin.settings.verticalTreeMaxColumns - 1;
+    }
+
+    private willOpenIntoVerticalTree(columnIndex: number): boolean {
+        return this.plugin.settings.verticalTreeEnabled &&
+            columnIndex === this.plugin.settings.verticalTreeMaxColumns - 1 &&
+            this.columnPaths.length >= this.plugin.settings.verticalTreeMaxColumns;
     }
 
     private renderColumn(path: string, columnIndex: number): void {
@@ -2088,6 +2353,7 @@ class FolderColumnNavigatorView extends ItemView {
         }
 
         const column = this.columnsEl.createDiv("fcn-column");
+        column.toggleClass("fcn-vertical-tree-column", this.isVerticalTreeColumn(columnIndex));
         column.dataset.fcnColumn = String(columnIndex);
         column.dataset.fcnPath = path;
         column.setCssProps({
@@ -2114,12 +2380,21 @@ class FolderColumnNavigatorView extends ItemView {
 
         if (columnIndex > 0) {
             this.addSpecialListItem(list, columnIndex, "返回上一级", "arrow-left", () => {
+                if (this.collapseVerticalTreeLevel(columnIndex)) {
+                    return;
+                }
                 this.columnPaths = this.columnPaths.slice(0, columnIndex);
                 this.selectedFilePath = null;
                 this.activeColumnIndex = columnIndex - 1;
                 this.refresh();
                 this.focusFirstColumnItem(columnIndex - 1);
             });
+        }
+
+        if (this.isVerticalTreeColumn(columnIndex)) {
+            this.renderVerticalTreeItems(list, folder, columnIndex, filterQuery);
+            this.updateColumnPreferredWidth(column, path);
+            return;
         }
 
         const children = [...folder.children]
@@ -2133,14 +2408,198 @@ class FolderColumnNavigatorView extends ItemView {
             return;
         }
 
-        children.forEach((child, itemIndex) => {
-            if (child instanceof TFolder) {
-                this.addFolderListItem(list, child, columnIndex, itemIndex);
-            } else if (child instanceof TFile) {
-                this.addFileListItem(list, child, columnIndex, itemIndex, this.isFolderNote(child, folder));
+        const groups = this.getItemGroups(children);
+        let itemIndex = 0;
+        groups.forEach(group => {
+            if (group.key) {
+                this.addItemGroupHeader(list, group, columnIndex, path);
             }
+            if (!this.isItemGroupExpanded(group, path)) {
+                return;
+            }
+            group.items.forEach(child => {
+                if (child instanceof TFolder) {
+                    this.addFolderListItem(list, child, columnIndex, itemIndex);
+                } else if (child instanceof TFile) {
+                    this.addFileListItem(list, child, columnIndex, itemIndex, this.isFolderNote(child, folder));
+                }
+                itemIndex += 1;
+            });
         });
         this.updateColumnPreferredWidth(column, path);
+    }
+
+    private renderVerticalTreeItems(
+        list: HTMLElement,
+        folder: TFolder,
+        columnIndex: number,
+        filterQuery: string
+    ): void {
+        const expandedPaths = new Set(this.verticalTreeExpandedPaths);
+        let itemIndex = 0;
+        let hasRenderableChildren = false;
+        const renderFolderItems = (currentFolder: TFolder, depth: number): void => {
+            const children = [...currentFolder.children]
+                .filter(child => !this.plugin.isHiddenByPattern(child.path))
+                .filter(child => !filterQuery || this.verticalTreeItemMatches(child, filterQuery))
+                .sort((a, b) => this.compareItems(a, b, currentFolder));
+            if (children.length === 0) {
+                return;
+            }
+            hasRenderableChildren = true;
+            this.getItemGroups(children).forEach(group => {
+                if (group.key) {
+                    this.addItemGroupHeader(list, group, columnIndex, currentFolder.path);
+                }
+                if (!this.isItemGroupExpanded(group, currentFolder.path)) {
+                    return;
+                }
+                group.items.forEach(child => {
+                    if (child instanceof TFolder) {
+                        this.addFolderListItem(list, child, columnIndex, itemIndex, currentFolder.path, depth);
+                    } else if (child instanceof TFile) {
+                        this.addFileListItem(
+                            list,
+                            child,
+                            columnIndex,
+                            itemIndex,
+                            this.isFolderNote(child, currentFolder),
+                            currentFolder.path,
+                            depth
+                        );
+                    }
+                    itemIndex += 1;
+                    if (child instanceof TFolder && expandedPaths.has(child.path)) {
+                        renderFolderItems(child, depth + 1);
+                    }
+                });
+            });
+        };
+        renderFolderItems(folder, 0);
+        if (itemIndex === 0 && !hasRenderableChildren) {
+            const empty = list.createDiv("fcn-empty-state");
+            empty.setText(filterQuery ? `未找到“${filterQuery}”相关条目` : "此目录暂无文件或子目录");
+        }
+    }
+
+    private verticalTreeItemMatches(item: TAbstractFile, query: string): boolean {
+        if (filterNameMatches(item.name, query)) {
+            return true;
+        }
+        if (!(item instanceof TFolder)) {
+            return false;
+        }
+        return item.children
+            .filter(child => !this.plugin.isHiddenByPattern(child.path))
+            .some(child => this.verticalTreeItemMatches(child, query));
+    }
+
+    private getItemGroups(children: TAbstractFile[]): ItemGroup[] {
+        const property = this.plugin.settings.groupProperty.trim();
+        if (!this.plugin.settings.groupItems || !property) {
+            return [{ key: "", label: "", items: children, isArchive: false }];
+        }
+
+        const groupValues = children.map(child => {
+            const parent = child.parent;
+            if (child instanceof TFile && parent && this.isFolderNote(child, parent)) {
+                return null;
+            }
+            const values = this.getItemPropertyValues(child, property, true);
+            return values.length > 0 ? values : null;
+        });
+        if (!groupValues.some(values => values !== null)) {
+            return [{ key: "", label: "", items: children, isArchive: false }];
+        }
+
+        const archiveNames = new Set(this.plugin.settings.groupArchiveNames
+            .map(name => name.trim().toLocaleLowerCase())
+            .filter(Boolean));
+        const grouped = new Map<string, TAbstractFile[]>();
+        const archiveGroups = new Set<string>();
+        children.forEach((child, index) => {
+            const parent = child.parent;
+            const isFolderNote = child instanceof TFile && Boolean(parent && this.isFolderNote(child, parent));
+            const values = groupValues[index];
+            const isArchive = !isFolderNote && values !== null && values.some(value => archiveNames.has(value.toLocaleLowerCase()));
+            const groupKey = isFolderNote ? "" : isArchive ? ARCHIVE_GROUP_KEY : values?.[0] ?? "其他";
+            const items = grouped.get(groupKey) ?? [];
+            items.push(child);
+            grouped.set(groupKey, items);
+            if (isArchive) {
+                archiveGroups.add(groupKey);
+            }
+        });
+        const pinnedGroups = new Set(this.plugin.settings.pinnedGroups);
+        return [...grouped.entries()]
+            .map(([key, items]) => ({
+                key,
+                label: key === ARCHIVE_GROUP_KEY ? "归档" : key,
+                items,
+                isArchive: archiveGroups.has(key)
+            }))
+            .sort((a, b) => {
+                const archiveDifference = Number(a.isArchive) - Number(b.isArchive);
+                if (archiveDifference) {
+                    return archiveDifference;
+                }
+                const pinDifference = Number(pinnedGroups.has(b.key)) - Number(pinnedGroups.has(a.key));
+                if (pinDifference) {
+                    return pinDifference;
+                }
+                const nameDifference = compareNames({ name: a.label }, { name: b.label });
+                return this.plugin.settings.groupSortDirection === "asc" ? nameDifference : -nameDifference;
+            });
+    }
+
+    private getItemGroupStateKey(groupPath: string, groupKey: string): string {
+        return `${groupPath}\u0000${groupKey}`;
+    }
+
+    private isItemGroupExpanded(group: ItemGroup, groupPath: string): boolean {
+        return !group.isArchive || this.expandedArchiveGroups.has(this.getItemGroupStateKey(groupPath, group.key));
+    }
+
+    private toggleItemGroup(group: ItemGroup, groupPath: string): void {
+        if (!group.isArchive) {
+            return;
+        }
+        const stateKey = this.getItemGroupStateKey(groupPath, group.key);
+        if (this.expandedArchiveGroups.has(stateKey)) {
+            this.expandedArchiveGroups.delete(stateKey);
+        } else {
+            this.expandedArchiveGroups.add(stateKey);
+        }
+        this.renderColumns();
+    }
+
+    private addItemGroupHeader(list: HTMLElement, group: ItemGroup, columnIndex: number, groupPath: string): void {
+        const header = list.createDiv("fcn-item-group-header");
+        header.dataset.fcnRow = "group";
+        header.dataset.fcnColumn = String(columnIndex);
+        header.dataset.fcnGroup = group.key;
+        header.dataset.fcnGroupPath = groupPath;
+        header.setAttribute("role", group.isArchive ? "button" : "heading");
+        const title = header.createSpan({ text: group.label, cls: "fcn-item-group-title" });
+        if (group.isArchive) {
+            const toggle = header.createSpan("fcn-item-group-toggle");
+            const expanded = this.isItemGroupExpanded(group, groupPath);
+            setIcon(toggle, expanded ? "chevron-down" : "chevron-right");
+            header.addClass("is-expandable");
+            header.toggleClass("is-collapsed", !expanded);
+            header.setAttribute("aria-expanded", String(expanded));
+            header.addEventListener("click", () => this.toggleItemGroup(group, groupPath));
+        }
+        header.createSpan({ text: String(group.items.length), cls: "fcn-item-group-count" });
+        if (this.plugin.isGroupPinned(group.key)) {
+            const icon = header.createSpan("fcn-item-group-pin");
+            setIcon(icon, "pin");
+            title.setAttribute("title", "已置顶分组");
+        }
+        header.addEventListener("contextmenu", event => {
+            event.preventDefault();
+            this.showGroupContextMenu(group.key, group.label, header, event);
+        });
     }
 
     private addSpecialListItem(
@@ -2159,24 +2618,40 @@ class FolderColumnNavigatorView extends ItemView {
         row.addEventListener("click", onClick);
     }
 
-    private addFolderListItem(list: HTMLElement, folder: TFolder, columnIndex: number, itemIndex: number): void {
+    private addFolderListItem(
+        list: HTMLElement,
+        folder: TFolder,
+        columnIndex: number,
+        itemIndex: number,
+        parentPath = folder.parent?.path ?? ROOT_PATH,
+        treeDepth = 0
+    ): void {
         const row = list.createDiv("fcn-file-item fcn-file-tree-item");
         this.setRowMetadata(row, columnIndex, itemIndex, "folder", folder.path);
-        row.toggleClass("is-selected", this.columnPaths[columnIndex + 1] === folder.path);
+        row.dataset.fcnParentPath = parentPath;
+        if (treeDepth > 0) {
+            row.addClass("fcn-vertical-tree-item");
+            row.setCssProps({ "--fcn-tree-indent": `${treeDepth * 18}px` });
+        }
+        row.toggleClass("is-selected", this.isFolderSelected(folder.path, columnIndex));
         row.setAttribute("tabindex", "0");
-        this.createItemIcon(row, this.getFolderIcon());
+        const iconName = this.isVerticalTreeColumn(columnIndex)
+            ? this.getVerticalTreeFolderIcon(folder)
+            : this.getFolderIcon();
+        this.createItemIcon(row, iconName);
         const folderNote = this.getFolderNote(folder);
-        this.createItemContent(row, folder.name, folderNote ? this.getFrontmatterDetail(
+        this.createItemContent(row, this.getItemDisplayName(folder, folder.name, this.plugin.settings.useFolderTreePropertyNames), folderNote ? this.getFrontmatterDetail(
             folderNote,
             this.plugin.settings.folderNoteMetadataKeys
         ) : null);
+        this.bindHoverPreview(row, folderNote);
         if (this.plugin.settings.showItemMetadata) {
             const visibleChildCount = folder.children.filter(child => !this.plugin.isHiddenByPattern(child.path)).length;
             row.createSpan({ text: `${visibleChildCount}`, cls: "fcn-item-meta" });
         }
         this.enableItemDragging(row, folder);
         this.enableMoveDropTarget(row, folder);
-        row.addEventListener("click", () => this.openFolderColumn(folder.path, columnIndex));
+        row.addEventListener("click", () => this.handleFolderClick(folder, columnIndex));
         row.addEventListener("contextmenu", event => {
             event.preventDefault();
             this.markKeyboardSelection(row);
@@ -2185,15 +2660,80 @@ class FolderColumnNavigatorView extends ItemView {
         });
     }
 
+    private handleFolderClick(folder: TFolder, columnIndex: number): void {
+        if (!this.isVerticalTreeColumn(columnIndex) && !this.willOpenIntoVerticalTree(columnIndex)) {
+            this.openFolderColumn(folder.path, columnIndex);
+            return;
+        }
+        this.toggleVerticalTreeFolder(folder.path, columnIndex);
+    }
+
+    private toggleVerticalTreeFolder(path: string, columnIndex: number): void {
+        if (this.verticalTreeExpandedPaths.has(path)) {
+            this.removeVerticalTreeExpansion(path);
+            const pathIndex = this.columnPaths.indexOf(path);
+            this.columnPaths = pathIndex >= columnIndex + 1
+                ? this.columnPaths.slice(0, pathIndex + 1)
+                : this.getVerticalTreeFocusPaths(path, columnIndex);
+        } else {
+            if (this.plugin.settings.verticalTreeCollapseSiblings) {
+                this.collapseVerticalTreeSiblings(path);
+            }
+            this.verticalTreeExpandedPaths.add(path);
+            this.columnPaths = this.getVerticalTreeFocusPaths(path, columnIndex);
+        }
+        this.selectedFilePath = null;
+        this.activeColumnIndex = columnIndex;
+        this.refresh();
+        this.focusFolderPath(path, columnIndex);
+    }
+
+    private removeVerticalTreeExpansion(path: string): void {
+        this.verticalTreeExpandedPaths.delete(path);
+        const prefix = `${path}/`;
+        [...this.verticalTreeExpandedPaths]
+            .filter(expandedPath => expandedPath.startsWith(prefix))
+            .forEach(expandedPath => this.verticalTreeExpandedPaths.delete(expandedPath));
+    }
+
+    private collapseVerticalTreeSiblings(path: string): void {
+        const folder = this.plugin.getFolder(path);
+        const parent = folder?.parent;
+        if (!parent) {
+            return;
+        }
+        parent.children
+            .filter((child): child is TFolder => child instanceof TFolder && child.path !== path)
+            .forEach(sibling => this.removeVerticalTreeExpansion(sibling.path));
+    }
+
+    private getVerticalTreeFocusPaths(path: string, columnIndex: number): string[] {
+        const rootPath = this.columnPaths[columnIndex];
+        if (!rootPath) {
+            return [...this.columnPaths.slice(0, columnIndex + 1), path];
+        }
+        const branch = this.buildFolderChain(rootPath, path);
+        return branch[0] === rootPath
+            ? [...this.columnPaths.slice(0, columnIndex), ...branch]
+            : [...this.columnPaths.slice(0, columnIndex + 1), path];
+    }
+
     private addFileListItem(
         list: HTMLElement,
         file: TFile,
         columnIndex: number,
         itemIndex: number,
-        isFolderNote: boolean
+        isFolderNote: boolean,
+        parentPath = file.parent?.path ?? ROOT_PATH,
+        treeDepth = 0
     ): void {
         const row = list.createDiv("fcn-file-item fcn-file-tree-item");
         this.setRowMetadata(row, columnIndex, itemIndex, "file", file.path);
+        row.dataset.fcnParentPath = parentPath;
+        if (treeDepth > 0) {
+            row.addClass("fcn-vertical-tree-item");
+            row.setCssProps({ "--fcn-tree-indent": `${treeDepth * 18}px` });
+        }
         row.toggleClass("is-selected", file.path === this.selectedFilePath);
         row.setAttribute("tabindex", "0");
         const iconName = isFolderNote ? this.getFolderNoteIcon() : this.getFileIcon(file);
@@ -2201,7 +2741,8 @@ class FolderColumnNavigatorView extends ItemView {
         if (this.plugin.settings.alignFileTreeNames && this.getFolderIcon() && !iconName) {
             row.createSpan("fcn-item-icon fcn-item-icon-placeholder");
         }
-        this.createItemContent(row, this.getFileDisplayName(file), this.getFileDetail(file));
+        this.createItemContent(row, this.getItemDisplayName(file, this.getFileDisplayName(file), this.plugin.settings.useFilePropertyNames), this.getFileDetail(file));
+        this.bindHoverPreview(row, file);
         if (this.plugin.settings.showItemMetadata) {
             row.createSpan({ text: file.extension.toUpperCase(), cls: "fcn-item-meta" });
         }
@@ -2229,6 +2770,104 @@ class FolderColumnNavigatorView extends ItemView {
         }
     }
 
+    private bindHoverPreview(row: HTMLElement, file: TFile | null): void {
+        if (!file) {
+            return;
+        }
+        row.addEventListener("mouseenter", event => this.scheduleHoverPreview(row, file, event as MouseEvent));
+        row.addEventListener("mouseleave", () => this.scheduleHoverPreviewClose());
+        row.addEventListener("pointerdown", () => this.closeHoverPreview());
+    }
+
+    private scheduleHoverPreview(row: HTMLElement, file: TFile, event: MouseEvent): void {
+        this.closeHoverPreview();
+        const token = ++this.hoverPreviewToken;
+        this.hoverPreviewTimer = window.setTimeout(() => {
+            this.hoverPreviewTimer = null;
+            if (token !== this.hoverPreviewToken || !row.matches(":hover")) {
+                return;
+            }
+            this.plugin.app.workspace.trigger("hover-link", {
+                event,
+                source: "folder-column-navigator",
+                hoverParent: this.hoverParent,
+                targetEl: row,
+                linktext: file.path,
+                sourcePath: file.path
+            });
+            this.hoverPreviewFallbackTimer = window.setTimeout(() => {
+                this.hoverPreviewFallbackTimer = null;
+                if (token === this.hoverPreviewToken && row.matches(":hover") && !this.hoverParent.hoverPopover) {
+                    void this.openHoverPreview(row, file, token);
+                }
+            }, 120);
+        }, this.plugin.settings.hoverPreviewDelayMs);
+    }
+
+    private closeHoverPreview(): void {
+        this.hoverPreviewToken += 1;
+        if (this.hoverPreviewTimer !== null) {
+            window.clearTimeout(this.hoverPreviewTimer);
+            this.hoverPreviewTimer = null;
+        }
+        if (this.hoverPreviewFallbackTimer !== null) {
+            window.clearTimeout(this.hoverPreviewFallbackTimer);
+            this.hoverPreviewFallbackTimer = null;
+        }
+        if (this.hoverPreviewCloseTimer !== null) {
+            window.clearTimeout(this.hoverPreviewCloseTimer);
+            this.hoverPreviewCloseTimer = null;
+        }
+        this.hoverPopover?.unload();
+        this.hoverPopover = null;
+        if (this.hoverParent.hoverPopover) {
+            this.hoverParent.hoverPopover.unload();
+        }
+        this.hoverParent.hoverPopover = null;
+    }
+
+    private scheduleHoverPreviewClose(): void {
+        if (this.hoverPreviewCloseTimer !== null) {
+            return;
+        }
+        this.hoverPreviewCloseTimer = window.setTimeout(() => {
+            this.hoverPreviewCloseTimer = null;
+            const popover = this.hoverParent.hoverPopover;
+            if (popover?.hoverEl.matches(":hover")) {
+                return;
+            }
+            this.closeHoverPreview();
+        }, HOVER_PREVIEW_CLOSE_DELAY_MS);
+    }
+
+    private async openHoverPreview(row: HTMLElement, file: TFile, token: number): Promise<void> {
+        this.hoverPopover?.unload();
+        const popover = new HoverPopover(this.hoverParent, row, 0);
+        this.hoverPopover = popover;
+        this.hoverParent.hoverPopover = popover;
+        popover.load();
+        popover.hoverEl.addEventListener("mouseenter", () => {
+            if (this.hoverPreviewCloseTimer !== null) {
+                window.clearTimeout(this.hoverPreviewCloseTimer);
+                this.hoverPreviewCloseTimer = null;
+            }
+        });
+        popover.hoverEl.addEventListener("mouseleave", () => this.scheduleHoverPreviewClose());
+        const content = popover.hoverEl.createDiv("fcn-hover-preview-content");
+        try {
+            const markdown = await this.plugin.app.vault.cachedRead(file);
+            if (token !== this.hoverPreviewToken || this.hoverPopover !== popover) {
+                popover.unload();
+                return;
+            }
+            await MarkdownRenderer.render(this.plugin.app, markdown, content, file.path, popover);
+        } catch {
+            if (token === this.hoverPreviewToken && this.hoverPopover === popover) {
+                content.setText("无法预览此文件。");
+            }
+        }
+    }
+
     private showFileContextMenu(file: TFile, origin: HTMLElement, event?: MouseEvent): void {
         const menu = this.createContextMenu(file, origin, event);
         menu.addItem(item => item.setSection("open").setTitle("打开").setIcon("file").onClick(() => void this.openFile(file)));
@@ -2242,6 +2881,20 @@ class FolderColumnNavigatorView extends ItemView {
         this.showContextMenu(menu, origin, event);
     }
 
+    private showGroupContextMenu(groupKey: string, groupLabel: string, origin: HTMLElement, event?: MouseEvent): void {
+        const menu = this.createContextMenu(this.plugin.app.vault.getRoot(), origin, event);
+        menu.addItem(item => item
+            .setSection("action")
+            .setTitle(this.plugin.isGroupPinned(groupKey) ? "取消置顶分组" : "置顶分组")
+            .setIcon(this.plugin.isGroupPinned(groupKey) ? "pin-off" : "pin")
+            .onClick(() => void this.plugin.toggleGroupPinned(groupKey)));
+        menu.addItem(item => item
+            .setSection("action")
+            .setTitle(`分组：${groupLabel}`)
+            .setDisabled(true));
+        this.showContextMenu(menu, origin, event);
+    }
+
     private showFolderContextMenu(folder: TFolder, origin: HTMLElement, event?: MouseEvent, columnIndex?: number): void {
         const menu = this.createContextMenu(folder, origin, event);
         if (columnIndex !== undefined) {
@@ -2251,6 +2904,13 @@ class FolderColumnNavigatorView extends ItemView {
         menu.addItem(item => item.setSection("action-primary").setTitle("新建子文件夹").setIcon("folder-plus").onClick(() => this.promptCreateFolder(folder)));
         menu.addItem(item => item.setSection("action-primary").setTitle("新建白板").setIcon("layout-dashboard").onClick(() => this.promptCreateCanvas(folder)));
         menu.addItem(item => item.setSection("action-primary").setTitle("新建数据库").setIcon("table-properties").onClick(() => this.promptCreateBase(folder)));
+        if (folder.path !== ROOT_PATH && !this.plugin.settings.customFolders.includes(folder.path)) {
+            menu.addItem(item => item
+                .setSection("action")
+                .setTitle("添加到一级目录中")
+                .setIcon("list-plus")
+                .onClick(() => void this.plugin.addCustomFolder(folder.path)));
+        }
         if (folder.parent) {
             menu.addSeparator();
             menu.addItem(item => item.setSection("action").setTitle("重命名").setIcon("edit-3").onClick(() => this.promptRename(folder)));
@@ -2501,14 +3161,7 @@ class FolderColumnNavigatorView extends ItemView {
                 new Notice("同名文件或目录已存在。", 3000);
                 return;
             }
-            const vault = this.plugin.app.vault as typeof this.plugin.app.vault & {
-                createFolder?: (folderPath: string) => Promise<TFolder>;
-            };
-            if (typeof vault.createFolder !== "function") {
-                new Notice("当前 Obsidian 版本不支持创建文件夹，请升级到 1.4.0 或更高版本。", 4000);
-                return;
-            }
-            await vault.createFolder(path);
+            await this.plugin.app.vault.createFolder(path);
         }, name => this.getDuplicateNameError(folder, name)).open();
     }
 
@@ -2561,8 +3214,75 @@ class FolderColumnNavigatorView extends ItemView {
         return this.plugin.settings.hideFileExtensions ? file.basename : file.name;
     }
 
-    private getFolderNote(folder: TFolder): TFile | null {
-        if (!this.plugin.settings.showFolderNotes) {
+    private getItemDisplayName(item: TAbstractFile, fallback: string, enabled: boolean): string {
+        if (!enabled || !this.plugin.settings.itemDisplayProperty.trim()) {
+            return fallback;
+        }
+        return this.getItemPropertyValue(
+            item,
+            this.plugin.settings.itemDisplayProperty,
+            item instanceof TFolder
+        ) ?? fallback;
+    }
+
+    private getItemPropertyValue(
+        item: TAbstractFile,
+        property: string,
+        allowFolderNoteWhenDisabled = false
+    ): string | null {
+        const sourceFile = item instanceof TFolder
+            ? this.getFolderNote(item, allowFolderNoteWhenDisabled)
+            : item instanceof TFile ? item : null;
+        if (!sourceFile) {
+            return null;
+        }
+        const frontmatter = this.plugin.app.metadataCache.getFileCache(sourceFile)?.frontmatter;
+        return this.getFirstMetadataValue(frontmatter?.[property]);
+    }
+
+    private getItemPropertyValues(
+        item: TAbstractFile,
+        property: string,
+        allowFolderNoteWhenDisabled = false
+    ): string[] {
+        const sourceFile = item instanceof TFolder
+            ? this.getFolderNote(item, allowFolderNoteWhenDisabled)
+            : item instanceof TFile ? item : null;
+        if (!sourceFile) {
+            return [];
+        }
+        const frontmatter = this.plugin.app.metadataCache.getFileCache(sourceFile)?.frontmatter;
+        return this.getGroupMetadataValues(frontmatter?.[property]);
+    }
+
+    private getGroupMetadataValues(value: unknown): string[] {
+        if (Array.isArray(value)) {
+            return value.flatMap(entry => this.getGroupMetadataValues(entry));
+        }
+        if (typeof value === "string") {
+            return value.split(/[,，]/)
+                .map(entry => entry.trim())
+                .filter(Boolean);
+        }
+        const formatted = this.formatMetadataValue(value);
+        return formatted ? [formatted] : [];
+    }
+
+    private getFirstMetadataValue(value: unknown): string | null {
+        if (Array.isArray(value)) {
+            for (const entry of value) {
+                const first = this.getFirstMetadataValue(entry);
+                if (first) {
+                    return first;
+                }
+            }
+            return null;
+        }
+        return this.formatMetadataValue(value);
+    }
+
+    private getFolderNote(folder: TFolder, allowWhenDisabled = false): TFile | null {
+        if (!allowWhenDisabled && !this.plugin.settings.showFolderNotes) {
             return null;
         }
         const directFiles = folder.children.filter((child): child is TFile => child instanceof TFile);
@@ -2678,6 +3398,7 @@ class FolderColumnNavigatorView extends ItemView {
 
     private restoreNavigationPosition(path: string, position: NavigationPosition): void {
         this.setColumnState(path, position.columnPaths);
+        this.syncVerticalTreeExpansionFromColumnPaths();
         this.selectedFilePath = position.selectedFilePath;
         this.activeColumnIndex = Math.max(0, Math.min(position.activeColumnIndex, this.columnPaths.length - 1));
         this.refresh();
@@ -2717,10 +3438,30 @@ class FolderColumnNavigatorView extends ItemView {
         if (!this.plugin.getFolder(path)) {
             return;
         }
-        this.columnPaths = [...this.columnPaths.slice(0, columnIndex + 1), path];
+        const verticalTree = this.isVerticalTreeColumn(columnIndex) || this.willOpenIntoVerticalTree(columnIndex);
+        if (verticalTree && (
+            this.columnPaths[columnIndex] === path ||
+            (this.columnPaths[columnIndex + 1] === path && this.verticalTreeExpandedPaths.has(path))
+        )) {
+            this.focusFolderPath(path, columnIndex);
+            return;
+        }
+        if (verticalTree) {
+            if (this.plugin.settings.verticalTreeCollapseSiblings && !this.verticalTreeExpandedPaths.has(path)) {
+                this.collapseVerticalTreeSiblings(path);
+            }
+            this.verticalTreeExpandedPaths.add(path);
+        }
+        this.columnPaths = verticalTree
+            ? this.getVerticalTreeFocusPaths(path, columnIndex)
+            : [...this.columnPaths.slice(0, columnIndex + 1), path];
         this.selectedFilePath = null;
-        this.activeColumnIndex = focusNextColumn ? columnIndex + 1 : columnIndex;
+        this.activeColumnIndex = verticalTree ? columnIndex : (focusNextColumn ? columnIndex + 1 : columnIndex);
         this.refresh();
+        if (verticalTree) {
+            this.focusFolderPath(path, columnIndex);
+            return;
+        }
         if (focusNextColumn) {
             const remembered = this.childColumnSelections.get(this.columnPaths[columnIndex]);
             if (remembered?.childPath === path) {
@@ -2763,6 +3504,7 @@ class FolderColumnNavigatorView extends ItemView {
         const columnPaths = this.buildFolderChain(basePath, parentPath);
         this.navigationBasePath = basePath;
         this.columnPaths = columnPaths;
+        this.syncVerticalTreeExpansionFromColumnPaths();
         this.activeColumnIndex = columnPaths.length - 1;
         this.selectedFilePath = file.path;
         this.filterState = null;
@@ -2778,6 +3520,7 @@ class FolderColumnNavigatorView extends ItemView {
         const columnPaths = this.buildFolderChain(basePath, targetFolder.path);
         this.navigationBasePath = basePath;
         this.columnPaths = columnPaths;
+        this.syncVerticalTreeExpansionFromColumnPaths();
         this.activeColumnIndex = columnPaths.length - 1;
         this.selectedFilePath = itemKind === "file" ? movedPath : null;
         this.filterState = null;
@@ -2902,7 +3645,11 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private updateColumnPreferredWidth(column: HTMLElement, path: string): void {
-        const preferredWidth = Math.ceil(this.measureColumnContentWidth(column));
+        const preferredWidth = clampColumnWidth(
+            Math.ceil(this.measureColumnContentWidth(column)),
+            this.plugin.settings.columnMinWidth,
+            this.plugin.settings.columnMaxWidth
+        );
         this.columnPreferredWidths.set(path, preferredWidth);
         const width = this.getColumnWidth(path);
         if (this.columnWidths.has(path)) {
@@ -2916,15 +3663,23 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private measureColumnContentWidth(column: HTMLElement): number {
-        const items = Array.from(column.querySelectorAll<HTMLElement>(".fcn-file-item"));
-        const header = column.querySelector<HTMLElement>(".fcn-column-header");
-        const emptyState = column.querySelector<HTMLElement>(".fcn-empty-state");
-        return Math.max(
-            1,
-            ...items.map(item => this.measureRowContentWidth(item)),
-            header ? this.measureRowContentWidth(header) : 0,
-            emptyState ? this.measureRowContentWidth(emptyState) : 0
-        );
+        const measurement = column.cloneNode(true) as HTMLElement;
+        measurement.addClass("fcn-column-measuring");
+        this.containerEl.appendChild(measurement);
+        try {
+            const items = Array.from(measurement.querySelectorAll<HTMLElement>(".fcn-file-item, .fcn-item-group-header"));
+            const header = measurement.querySelector<HTMLElement>(".fcn-column-header");
+            const emptyState = measurement.querySelector<HTMLElement>(".fcn-empty-state");
+            return Math.max(
+                1,
+                Math.ceil(measurement.getBoundingClientRect().width),
+                ...items.map(item => this.measureRowContentWidth(item)),
+                header ? this.measureRowContentWidth(header) : 0,
+                emptyState ? this.measureRowContentWidth(emptyState) : 0
+            );
+        } finally {
+            measurement.remove();
+        }
     }
 
     private measureRowContentWidth(row: HTMLElement): number {
@@ -2932,8 +3687,20 @@ class FolderColumnNavigatorView extends ItemView {
         const horizontalPadding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
         const gap = parseFloat(style.columnGap || style.gap) || 0;
         const children = Array.from(row.children).filter((child): child is HTMLElement => child.instanceOf(HTMLElement));
-        const contentWidth = children.reduce((total, child) => total + Math.ceil(child.scrollWidth), 0);
+        const contentWidth = children.reduce((total, child) => total + this.measureElementContentWidth(child), 0);
         return horizontalPadding + contentWidth + Math.max(0, children.length - 1) * gap;
+    }
+
+    private measureElementContentWidth(element: HTMLElement): number {
+        const children = Array.from(element.children).filter((child): child is HTMLElement => child.instanceOf(HTMLElement));
+        if (element.hasClass("fcn-item-content")) {
+            return Math.max(
+                Math.ceil(element.scrollWidth),
+                ...children.map(child => this.measureElementContentWidth(child)),
+                0
+            );
+        }
+        return Math.max(Math.ceil(element.scrollWidth), Math.ceil(element.getBoundingClientRect().width));
     }
 
     private startColumnResize(event: PointerEvent, path: string): void {
@@ -3284,6 +4051,9 @@ class FolderColumnNavigatorView extends ItemView {
                     void this.openFile(file);
                 }
             } else if (kind === "special" && columnIndex > 0) {
+                if (this.collapseVerticalTreeLevel(columnIndex)) {
+                    return;
+                }
                 this.columnPaths = this.columnPaths.slice(0, columnIndex);
                 this.activeColumnIndex = columnIndex - 1;
                 this.refresh();
@@ -3411,12 +4181,30 @@ class FolderColumnNavigatorView extends ItemView {
     private previewFocusedRow(row: HTMLElement, columnIndex: number): void {
         const kind = row.dataset.fcnKind;
         const path = row.dataset.fcnPath ?? "";
+        if (kind === "folder" && (this.isVerticalTreeColumn(columnIndex) || this.willOpenIntoVerticalTree(columnIndex))) {
+            if (this.columnPaths[columnIndex] === path || this.columnPaths[columnIndex + 1] === path) {
+                return;
+            }
+            this.columnPaths = this.getVerticalTreeFocusPaths(path, columnIndex);
+            this.activeColumnIndex = columnIndex;
+            this.refresh();
+            this.focusFolderPath(path, columnIndex);
+            return;
+        }
         if (kind === "folder" && this.columnPaths[columnIndex + 1] !== path) {
             this.openFolderColumn(path, columnIndex, false);
             return;
         }
         if (kind !== "folder" && this.columnPaths.length > columnIndex + 1) {
-            this.columnPaths = this.columnPaths.slice(0, columnIndex + 1);
+            const parentPath = row.dataset.fcnParentPath;
+            const parentIndex = parentPath ? this.columnPaths.indexOf(parentPath) : -1;
+            const endIndex = this.isVerticalTreeColumn(columnIndex) && parentIndex >= columnIndex + 1
+                ? parentIndex + 1
+                : columnIndex + 1;
+            if (endIndex >= this.columnPaths.length) {
+                return;
+            }
+            this.columnPaths = this.columnPaths.slice(0, endIndex);
             this.activeColumnIndex = columnIndex;
             this.refresh();
             if (kind === "file") {
@@ -3432,6 +4220,9 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private focusPreviousColumnOrNavigation(columnIndex: number): void {
+        if (this.collapseVerticalTreeLevel(columnIndex)) {
+            return;
+        }
         if (columnIndex === 0) {
             if (this.plugin.settings.showRootFoldersAtTop) {
                 return;
@@ -3450,14 +4241,56 @@ class FolderColumnNavigatorView extends ItemView {
                 kind: this.lastFocusedRow.kind
             });
         }
+        this.columnPaths = this.columnPaths.slice(0, columnIndex);
+        this.activeColumnIndex = columnIndex - 1;
+        this.refresh();
         const previousColumn = this.columnsEl.querySelector<HTMLElement>(
             `.fcn-column[data-fcn-column="${columnIndex - 1}"]`
         );
         const previousFolderRow = Array.from(previousColumn?.querySelectorAll<HTMLElement>('[data-fcn-row="column"]') ?? [])
             .find(row => row.dataset.fcnKind === "folder" && row.dataset.fcnPath === openedPath);
-        this.activeColumnIndex = columnIndex - 1;
         this.ensureColumnVisible(columnIndex - 1);
         (previousFolderRow ?? previousColumn?.querySelector<HTMLElement>('[data-fcn-row="column"]'))?.focus();
+    }
+
+    private collapseVerticalTreeLevel(columnIndex: number): boolean {
+        if (!this.isVerticalTreeColumn(columnIndex) || this.columnPaths.length <= columnIndex + 1) {
+            return false;
+        }
+        const collapsedPath = this.columnPaths[this.columnPaths.length - 1];
+        if (this.verticalTreeExpandedPaths.has(collapsedPath)) {
+            this.removeVerticalTreeExpansion(collapsedPath);
+            this.activeColumnIndex = columnIndex;
+            this.refresh();
+            this.focusFolderPath(collapsedPath, columnIndex);
+            return true;
+        }
+
+        const parentPath = this.columnPaths[this.columnPaths.length - 2];
+        this.columnPaths = this.columnPaths.slice(0, -1);
+        if (parentPath === this.columnPaths[columnIndex]) {
+            this.activeColumnIndex = columnIndex - 1;
+            this.refresh();
+            const parentColumn = this.columnsEl.querySelector<HTMLElement>(
+                `.fcn-column[data-fcn-column="${columnIndex - 1}"]`
+            );
+            const parentRow = Array.from(parentColumn?.querySelectorAll<HTMLElement>('[data-fcn-row="column"]') ?? [])
+                .find(row => row.dataset.fcnKind === "folder" && row.dataset.fcnPath === parentPath);
+            this.ensureColumnVisible(columnIndex - 1);
+            (parentRow ?? parentColumn?.querySelector<HTMLElement>('[data-fcn-row="column"]'))?.focus();
+            return true;
+        }
+        this.selectedFilePath = null;
+        this.activeColumnIndex = columnIndex;
+        this.refresh();
+        this.focusFolderPath(parentPath ?? collapsedPath, columnIndex);
+        return true;
+    }
+
+    private isFolderSelected(path: string, columnIndex: number): boolean {
+        return this.isVerticalTreeColumn(columnIndex)
+            ? this.columnPaths[this.columnPaths.length - 1] === path
+            : this.columnPaths[columnIndex + 1] === path;
     }
 
     private focusFirstColumnItem(columnIndex: number): void {
@@ -3579,7 +4412,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
             {
                 type: "page",
                 name: "导航",
-                desc: "一级目录、置顶展示和自定义目录。",
+                desc: "一级目录排序、布局和自定义目录。",
                 items: [
                     {
                         name: "一级目录置顶展示",
@@ -3600,15 +4433,60 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                         }
                     },
                     {
+                        name: "深层目录纵向展开",
+                        desc: "开启后，超过最大水平列数的目录会在最后一列按树形垂直展开。",
+                        control: { type: "toggle", key: "verticalTreeEnabled" }
+                    },
+                    {
+                        name: "最大水平列数",
+                        desc: "保留的水平目录列数量，超过后改为纵向树形展开。默认 4 列。",
+                        visible: () => this.plugin.settings.verticalTreeEnabled,
+                        control: {
+                            type: "slider",
+                            key: "verticalTreeMaxColumns",
+                            min: MIN_VERTICAL_TREE_COLUMNS,
+                            max: MAX_VERTICAL_TREE_COLUMNS,
+                            step: 1,
+                            displayFormat: value => `${value} 列`
+                        }
+                    },
+                    {
+                        name: "展开时折叠兄弟目录",
+                        desc: "开启后，展开目录时自动收起同级已展开目录；默认保留兄弟目录。",
+                        visible: () => this.plugin.settings.verticalTreeEnabled,
+                        control: { type: "toggle", key: "verticalTreeCollapseSiblings" }
+                    },
+                    {
                         name: "添加自定义目录",
                         desc: "例如：工作/项目，路径必须存在于当前仓库。",
                         render: setting => {
                             let inputValue = "";
-                            setting.addText(text => text
-                                .setPlaceholder("工作/项目")
-                                .onChange(value => {
-                                    inputValue = value;
-                                }))
+                            let inputEl: HTMLInputElement | null = null;
+                            setting.addText(text => {
+                                inputEl = text.inputEl;
+                                return text
+                                    .setPlaceholder("工作/项目")
+                                    .onChange(value => {
+                                        inputValue = value;
+                                    });
+                            });
+                            const folderInputEl = inputEl as unknown as HTMLInputElement;
+                            new FolderPathInputSuggest(this.plugin.app, folderInputEl, folder => {
+                                inputValue = folder.path;
+                                folderInputEl.value = folder.path;
+                                folderInputEl.dispatchEvent(new Event("input", { bubbles: true }));
+                            });
+                            folderInputEl.addEventListener("keydown", (event: KeyboardEvent) => {
+                                if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    void this.plugin.addCustomFolder(inputValue).then(added => {
+                                        if (added) {
+                                            this.refreshSettingsTab();
+                                        }
+                                    });
+                                }
+                            });
+                            setting
                                 .addButton(button => button.setButtonText("添加").setCta().onClick(() => {
                                     void this.plugin.addCustomFolder(inputValue).then(added => {
                                         if (added) {
@@ -3619,46 +4497,42 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                         }
                     },
                     {
-                        type: "group",
-                        heading: "一级目录",
-                        items: this.plugin.getRootFolders().map(folder => ({
-                            name: folder.name,
-                            desc: folder.path,
+                        type: "list",
+                        heading: "一级目录与自定义目录",
+                        desc: "拖动左侧手柄调整一级目录和自定义目录的显示顺序。",
+                        emptyState: "还没有可展示的目录。",
+                        items: this.plugin.getNavigationSettingsEntries().map(entry => ({
+                            name: entry.name,
+                            desc: entry.kind === "custom" ? `自定义目录 · ${entry.path}` : entry.path,
                             render: setting => {
-                                setting
-                                    .addButton(button => button
-                                        .setButtonText(this.plugin.isPinned(folder.path) ? "取消置顶" : "置顶")
-                                        .onClick(() => void this.plugin.togglePinned(folder.path).then(() => this.refreshSettingsTab())))
-                                    .addButton(button => button
-                                        .setButtonText(this.plugin.settings.hiddenRootPaths.includes(folder.path) ? "显示" : "隐藏")
-                                        .onClick(() => void this.plugin.toggleHiddenRoot(folder.path).then(() => this.refreshSettingsTab())));
-                            }
-                        }))
-                    },
-                    {
-                        type: "group",
-                        heading: "自定义目录",
-                        items: this.plugin.settings.customFolders.map(path => {
-                            const folder = this.plugin.getFolder(path);
-                            return {
-                                name: folder?.name ?? path,
-                                desc: path,
-                                render: setting => {
+                                if (entry.kind === "root-folder") {
                                     setting
-                                        .addText(text => text
-                                            .setPlaceholder("显示名称")
-                                            .setValue(this.plugin.settings.customFolderNames[path] ?? "")
-                                            .onChange(value => void this.plugin.updateCustomFolderDisplayName(path, value)))
                                         .addButton(button => button
-                                            .setButtonText(this.plugin.isPinned(path) ? "取消置顶" : "置顶")
-                                        .onClick(() => void this.plugin.togglePinned(path).then(() => this.refreshSettingsTab())))
-                                        .addExtraButton(button => button
-                                            .setIcon("trash")
-                                            .setTooltip("移除自定义目录")
-                                            .onClick(() => void this.plugin.removeCustomFolder(path).then(() => this.refreshSettingsTab())));
+                                            .setButtonText(this.plugin.settings.hiddenRootPaths.includes(entry.path) ? "显示" : "隐藏")
+                                            .onClick(() => void this.plugin.toggleHiddenRoot(entry.path).then(() => this.refreshSettingsTab())));
+                                    return;
                                 }
-                            };
-                        })
+                                setting
+                                    .addText(text => text
+                                        .setPlaceholder("显示名称")
+                                        .setValue(this.plugin.settings.customFolderNames[entry.path] ?? "")
+                                        .onChange(value => void this.plugin.updateCustomFolderDisplayName(entry.path, value)))
+                                    .addExtraButton(button => button
+                                        .setIcon("trash")
+                                        .setTooltip("移除自定义目录")
+                                        .onClick(() => void this.plugin.removeCustomFolder(entry.path).then(() => this.refreshSettingsTab())));
+                            }
+                        })),
+                        onReorder: (oldIndex, newIndex) => {
+                            const entries = this.plugin.getNavigationSettingsEntries();
+                            const reordered = [...entries];
+                            const [moved] = reordered.splice(oldIndex, 1);
+                            if (!moved) {
+                                return;
+                            }
+                            reordered.splice(newIndex, 0, moved);
+                            void this.plugin.reorderNavigationEntries(reordered.map(entry => entry.path)).then(() => this.refreshSettingsTab());
+                        }
                     }
                 ]
             },
@@ -3735,6 +4609,33 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                 control: { type: "toggle", key: "showMetadataNames" }
                             },
                             {
+                                name: "一级目录使用属性作为名称",
+                                desc: "用一级目录（包括自定义目录）对应文件夹笔记的属性替换显示名称。",
+                                control: { type: "toggle", key: "useRootFolderPropertyNames" }
+                            },
+                            {
+                                name: "目录树使用属性作为名称",
+                                desc: "用目录对应文件夹笔记的属性替换文件树中的目录名称。",
+                                control: { type: "toggle", key: "useFolderTreePropertyNames" }
+                            },
+                            {
+                                name: "文件使用属性作为名称",
+                                desc: "用文件自身属性替换文件名称；属性为数组时取第一个值。",
+                                control: { type: "toggle", key: "useFilePropertyNames" }
+                            },
+                            {
+                                name: "名称属性",
+                                desc: "以上开关读取的属性名称，默认 aliases。",
+                                visible: () => this.plugin.settings.useRootFolderPropertyNames ||
+                                    this.plugin.settings.useFolderTreePropertyNames ||
+                                    this.plugin.settings.useFilePropertyNames,
+                                control: {
+                                    type: "text",
+                                    key: "itemDisplayProperty",
+                                    placeholder: "aliases"
+                                }
+                            },
+                            {
                                 name: "文件日期",
                                 desc: "作为文件名称下方的次级信息展示。",
                                 control: {
@@ -3747,11 +4648,70 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                     },
                     {
                         type: "group",
+                        heading: "交互",
+                        items: [
+                            {
+                                name: "悬浮预览延迟",
+                                desc: "鼠标停留在文件或文件夹笔记上多久后显示预览；范围 350ms–2s，默认 500ms。",
+                                control: {
+                                    type: "slider",
+                                    key: "hoverPreviewDelayMs",
+                                    min: MIN_HOVER_PREVIEW_DELAY_MS,
+                                    max: MAX_HOVER_PREVIEW_DELAY_MS,
+                                    step: 50,
+                                    displayFormat: value => `${value}ms`
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        type: "group",
+                        heading: "分组",
+                        items: [
+                            {
+                                name: "启用目录和文件分组",
+                                desc: "按指定属性分组；目录读取文件夹笔记中的属性。每组内部继续使用当前排序规则。",
+                                control: { type: "toggle", key: "groupItems" }
+                            },
+                            {
+                                name: "分组属性",
+                                desc: "填写 Frontmatter 属性名，例如 category 或 project。支持逗号分隔值或 YAML 数组；普通多值只取第一个，只要任一值命中归档名称就归入“归档”。没有值的条目归入“其他”。",
+                                visible: () => this.plugin.settings.groupItems,
+                                control: {
+                                    type: "text",
+                                    key: "groupProperty",
+                                    placeholder: "category"
+                                }
+                            },
+                            {
+                                name: "归档分组名称",
+                                desc: "每行一个用于识别归档的属性值，默认 archive；匹配后统一显示为“归档”，固定在底部并默认折叠。",
+                                visible: () => this.plugin.settings.groupItems,
+                                control: {
+                                    type: "textarea",
+                                    key: "groupArchiveNamesText",
+                                    placeholder: "archive\narchived"
+                                }
+                            },
+                            {
+                                name: "分组顺序",
+                                desc: "仅改变分组之间的顺序，不改变组内条目顺序。",
+                                visible: () => this.plugin.settings.groupItems,
+                                control: {
+                                    type: "dropdown",
+                                    key: "groupSortDirection",
+                                    options: { asc: "升序", desc: "倒序" }
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        type: "group",
                         heading: "图标",
                         items: [
                             {
                                 name: "文件夹图标",
-                                desc: "可保留文件夹图标、显示右箭头（>）或完全隐藏。",
+                                desc: "可保留文件夹图标（垂直展开时使用打开/关闭状态）、显示右箭头（>）或完全隐藏。",
                                 control: {
                                     type: "dropdown",
                                     key: "folderIconStyle",
@@ -3966,14 +4926,22 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
         if (key === "fileMetadataKeysText") {
             return this.plugin.settings.fileMetadataKeys.join("\n");
         }
+        if (key === "groupArchiveNamesText") {
+            return this.plugin.settings.groupArchiveNames.join("\n");
+        }
         return this.plugin.settings[key as keyof FolderColumnNavigatorSettings];
     }
 
     private async applyControlValue(key: string, value: unknown): Promise<void> {
         switch (key) {
             case "showRootFoldersAtTop":
+            case "verticalTreeEnabled":
+            case "verticalTreeCollapseSiblings":
             case "wrapItemNames":
             case "showMetadataNames":
+            case "useRootFolderPropertyNames":
+            case "useFolderTreePropertyNames":
+            case "useFilePropertyNames":
             case "alignFileTreeNames":
             case "showFolderNotes":
             case "folderNoteMatchFolderName":
@@ -3988,10 +4956,17 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
             case "showCalendarAtBottom":
             case "calendarShowFileIcons":
             case "calendarOpenSingleMatch":
+            case "groupItems":
                 this.plugin.settings[key] = Boolean(value);
+                break;
+            case "hoverPreviewDelayMs":
+                this.plugin.settings.hoverPreviewDelayMs = clampHoverPreviewDelay(value);
                 break;
             case "rootFolderVisibleRows":
                 this.plugin.settings.rootFolderVisibleRows = Math.max(1, Math.min(8, Math.round(Number(value))));
+                break;
+            case "verticalTreeMaxColumns":
+                this.plugin.settings.verticalTreeMaxColumns = clampVerticalTreeColumns(value);
                 break;
             case "wrapItemNameMaxLines":
                 this.plugin.settings.wrapItemNameMaxLines = clampItemNameWrapLines(value);
@@ -4015,6 +4990,20 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
             case "fileDateDisplay":
                 if (isFileDateDisplay(value)) {
                     this.plugin.settings.fileDateDisplay = value;
+                }
+                break;
+            case "itemDisplayProperty":
+                this.plugin.settings.itemDisplayProperty = String(value).trim();
+                break;
+            case "groupProperty":
+                this.plugin.settings.groupProperty = String(value).trim();
+                break;
+            case "groupArchiveNamesText":
+                this.plugin.settings.groupArchiveNames = cleanTextList(String(value).split(/\r?\n/));
+                break;
+            case "groupSortDirection":
+                if (isSortDirection(value)) {
+                    this.plugin.settings.groupSortDirection = value;
                 }
                 break;
             case "hiddenPatternsText":
