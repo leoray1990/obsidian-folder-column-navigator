@@ -24,6 +24,7 @@ It is built for fast keyboard browsing: use `↑` `↓` `←` `→` to move, `En
 - File-list-like sorting, item metadata, configurable icons, font sizes, widths, and hiding rules.
 - A collapsible bottom calendar with month/year views and week numbers; click a day to open files matched by file dates, frontmatter dates, or filename date patterns.
 - Built-in file and folder context menus, plus compatibility with other plugins through Obsidian's `file-menu` event.
+- Same-folder multi-selection, batch moving/deletion/property editing, column-background drops, and persistent drag-defined ordering.
 - Immediate duplicate-name validation when creating or renaming files and folders.
 
 ## Screenshots / 截图
@@ -133,6 +134,8 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 - 在一级目录之间切换后，会记住该目录上次展开到的列和焦点位置。
 - 移动文件或目录后，会自动定位并展开目标目录，保留键盘焦点以便继续操作。
 - 文件或目录也可直接拖到目标目录；悬停约半秒会自动选中并展开该目录，再松开完成移动。
+- 文件或目录可拖到其他文件列的空白处，直接移动到该列对应目录。
+- 同目录内可使用 `Shift` 连选、`Cmd`/ `Ctrl` 增减选择；多选项目可一起拖拽移动。
 
 ### 排序与显示
 
@@ -141,12 +144,13 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 - 名称
 - 修改日期
 - 创建日期
+- 自定义排序（拖动同级条目后自动切换，并按目录持久保存）
 
 还可配置：
 
 - 显示或隐藏目录子项数量、文件类型缩写等元信息。
 - 一级目录与文件树的独立字号。
-- 文件夹图标：文件夹、右箭头或不显示；选择文件夹图标时，展开和未展开状态会使用不同图标。
+- 文件夹图标：文件夹、右箭头或不显示；横向多列浏览时图标保持不变，仅垂直树展开时切换打开文件夹或向下箭头。
 - 文件图标：通用图标、按常见文件类型显示或不显示。
 - 隐藏文件扩展名；不会影响右侧可单独关闭的类型缩写。
 - 目录与文件名称左对齐。
@@ -196,6 +200,10 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 | 单击文件 | 打开文件 |
 | 拖拽一级目录 | 调整一级目录顺序 |
 | 拖拽文件/目录到目标目录 | 悬停后自动展开目标目录，松开后移动 |
+| 拖拽文件/目录到其他列空白处 | 移动到该列对应目录 |
+| 拖拽同级条目的上/下边缘 | 调整条目顺序并切换为自定义排序 |
+| `Shift` + 单击 | 选择同目录内两个项目之间的连续范围 |
+| `Cmd` / `Ctrl` + 单击 | 在同目录选择中增加或移除项目 |
 | 拖拽列分割线 | 调整左侧目录列或文件列宽度 |
 | 右键文件/文件夹 | 打开上下文菜单 |
 
@@ -207,7 +215,7 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 | `←` / `→` | 在父列与子列之间移动；在文件夹上向右会展开子列 |
 | `Enter` | 进入文件夹或打开文件 |
 | `Space` | 打开当前文件或文件夹的上下文菜单；菜单打开后再次按 `Space` 关闭 |
-| `Shift` + `↑` | 顶部布局下，从文件树回到顶部一级目录 |
+| `Shift` + `↑` / `↓` | 向上或向下追加选择同目录的相邻项目 |
 | `Esc` | 清除当前筛选；无筛选时关闭上下文菜单 |
 | `Backspace` | 删除一个筛选字符；在上下文菜单中优先删除菜单筛选字符 |
 
@@ -217,7 +225,9 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 
 文件菜单提供：打开、在新标签页打开、重命名、移动、删除等操作。
 
-文件夹菜单提供：新建笔记、新建子文件夹、新建白板、新建数据库、移动等操作。
+文件夹菜单提供：新建笔记、新建子文件夹、新建白板、新建数据库、移动、删除等操作。删除目录前必须在确认弹窗中再次确认。
+
+同目录选中多个项目后，菜单提供批量移动、新建同级文件夹和确认删除；仅当所选项目全部为 Markdown 文件时，额外显示“批量设置属性”。列表属性会追加并去重，文本、数字、复选框、日期和日期时间会校验现有属性类型，修改完成后展示逐文件结果。
 
 插件会兼容其他插件加入的标准文件菜单项；如需精简菜单，可在“高级”设置中关闭“显示扩展菜单项”，关闭后仍保留本插件自带操作。菜单打开后同样支持输入字母/数字筛选、方向键移动和 `Enter` 执行。
 

@@ -53,8 +53,9 @@ const MIN_VERTICAL_TREE_COLUMNS = 2;
 const MAX_VERTICAL_TREE_COLUMNS = 8;
 const DEFAULT_VERTICAL_TREE_COLUMNS = 4;
 
-type SortField = "name" | "modified" | "created";
+type SortField = "name" | "modified" | "created" | "custom";
 type SortDirection = "asc" | "desc";
+type PropertyValueType = "text" | "list" | "number" | "checkbox" | "date" | "datetime";
 type FolderIconStyle = "folder" | "chevron" | "none";
 type FileIconStyle = "file" | "type" | "none";
 type CalendarDisplayMode = "month" | "week" | "year";
@@ -94,6 +95,8 @@ interface FolderColumnNavigatorSettings {
     navigationWidth: number;
     sortField: SortField;
     sortDirection: SortDirection;
+    /** Persisted sibling order for every directory that has been manually reordered. */
+    customItemOrders: Record<string, string[]>;
     groupItems: boolean;
     groupProperty: string;
     groupArchiveNames: string[];
@@ -156,6 +159,7 @@ const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
     navigationWidth: DEFAULT_NAVIGATION_WIDTH,
     sortField: "name",
     sortDirection: "asc",
+    customItemOrders: {},
     groupItems: false,
     groupProperty: "",
     groupArchiveNames: ["archive"],
@@ -277,7 +281,27 @@ function clampColumnWidth(width: number, minimumWidth: number, maximumWidth: num
 }
 
 function isSortField(value: unknown): value is SortField {
-    return value === "name" || value === "modified" || value === "created";
+    return value === "name" || value === "modified" || value === "created" || value === "custom";
+}
+
+function cleanStoredItemOrders(value: unknown): Record<string, string[]> {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+        return {};
+    }
+    return Object.entries(value).reduce<Record<string, string[]>>((orders, [parentPath, paths]) => {
+        if (!Array.isArray(paths)) {
+            return orders;
+        }
+        const normalizedParentPath = normalizeFolderPath(parentPath);
+        const cleanPaths = [...new Set(paths
+            .filter((path): path is string => typeof path === "string")
+            .map(path => path.trim().replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+$/, ""))
+            .filter(Boolean))];
+        if (cleanPaths.length > 0) {
+            orders[normalizedParentPath] = cleanPaths;
+        }
+        return orders;
+    }, {});
 }
 
 function isSortDirection(value: unknown): value is SortDirection {
@@ -412,6 +436,213 @@ class FolderDestinationModal extends SuggestModal<TFolder> {
     onChooseSuggestion(folder: TFolder): void {
         this.close();
         void this.onChooseFolder(folder);
+    }
+}
+
+interface PropertyTypeResolution {
+    type: PropertyValueType | null;
+    error: string | null;
+}
+
+interface BatchPropertyRequest {
+    property: string;
+    type: PropertyValueType;
+    rawValue: string;
+}
+
+class PropertyNameInputSuggest extends AbstractInputSuggest<string> {
+    constructor(
+        app: FolderColumnNavigatorPlugin["app"],
+        inputEl: HTMLInputElement,
+        private readonly propertyNames: string[],
+        private readonly onSelectProperty: (property: string) => void
+    ) {
+        super(app, inputEl);
+        this.limit = 50;
+    }
+
+    protected getSuggestions(query: string): string[] {
+        return this.propertyNames
+            .filter(property => !query || filterNameMatches(property, query))
+            .slice(0, this.limit);
+    }
+
+    renderSuggestion(property: string, el: HTMLElement): void {
+        el.setText(property);
+    }
+
+    selectSuggestion(property: string, _evt: MouseEvent | KeyboardEvent): void {
+        this.setValue(property);
+        this.onSelectProperty(property);
+        this.close();
+    }
+}
+
+class BatchPropertyModal extends Modal {
+    constructor(
+        app: FolderColumnNavigatorPlugin["app"],
+        private readonly propertyNames: string[],
+        private readonly resolveType: (property: string) => PropertyTypeResolution,
+        private readonly onSubmitRequest: (request: BatchPropertyRequest) => Promise<string | null>
+    ) {
+        super(app);
+    }
+
+    onOpen(): void {
+        this.setTitle("批量设置属性");
+        this.modalEl.addClass("fcn-batch-property-modal");
+        const form = this.contentEl.createDiv("fcn-batch-property-form");
+        form.createEl("label", { text: "属性名" });
+        const propertyInput = form.createEl("input", {
+            type: "text",
+            placeholder: "输入或选择属性名"
+        });
+        const shortcuts = form.createDiv("fcn-property-shortcuts");
+        ["group", "aliases", "tags"].forEach(property => {
+            const button = shortcuts.createEl("button", { text: property, attr: { type: "button" } });
+            button.addEventListener("click", () => {
+                propertyInput.value = property;
+                propertyInput.dispatchEvent(new Event("input"));
+                valueInput.focus();
+            });
+        });
+        form.createEl("label", { text: "属性类型" });
+        const typeSelect = form.createEl("select");
+        ([
+            ["text", "文本"],
+            ["list", "列表（追加）"],
+            ["number", "数字"],
+            ["checkbox", "复选框"],
+            ["date", "日期"],
+            ["datetime", "日期时间"]
+        ] as Array<[PropertyValueType, string]>).forEach(([value, label]) => {
+            typeSelect.createEl("option", { value, text: label });
+        });
+        form.createEl("label", { text: "属性值" });
+        const valueInput = form.createEl("input", {
+            type: "text",
+            placeholder: "列表值可使用逗号分隔"
+        });
+        const hint = form.createDiv("fcn-property-type-hint");
+        const validation = form.createDiv("fcn-input-validation");
+        const actions = this.contentEl.createDiv("modal-button-container");
+        actions.createEl("button", { text: "取消" }).addEventListener("click", () => this.close());
+        const submitButton = actions.createEl("button", { text: "设置", cls: "mod-cta" });
+
+        const updatePropertyType = (): void => {
+            const property = propertyInput.value.trim();
+            const resolution = property ? this.resolveType(property) : { type: null, error: null };
+            const defaultType: PropertyValueType = property === "aliases" || property === "tags" ? "list" : "text";
+            typeSelect.value = resolution.type ?? defaultType;
+            typeSelect.disabled = Boolean(resolution.type);
+            hint.setText(resolution.error
+                ? resolution.error
+                : resolution.type
+                    ? `已根据现有属性识别为“${typeSelect.selectedOptions[0]?.text ?? typeSelect.value}”。`
+                    : "新属性可自行选择类型。");
+            hint.toggleClass("is-error", Boolean(resolution.error));
+            submitButton.disabled = Boolean(resolution.error) || !property;
+        };
+        propertyInput.addEventListener("input", updatePropertyType);
+        new PropertyNameInputSuggest(this.app, propertyInput, this.propertyNames, () => updatePropertyType());
+        const submit = async (): Promise<void> => {
+            const property = propertyInput.value.trim();
+            const rawValue = valueInput.value.trim();
+            const resolution = property ? this.resolveType(property) : { type: null, error: null };
+            const message = !property
+                ? "请输入属性名。"
+                : resolution.error
+                    ? resolution.error
+                    : !rawValue ? "请输入属性值。" : "";
+            validation.setText(message);
+            validation.toggleClass("is-visible", Boolean(message));
+            if (message) {
+                return;
+            }
+            submitButton.disabled = true;
+            const error = await this.onSubmitRequest({
+                property,
+                type: typeSelect.value as PropertyValueType,
+                rawValue
+            });
+            if (error) {
+                validation.setText(error);
+                validation.addClass("is-visible");
+                submitButton.disabled = false;
+                return;
+            }
+            this.close();
+        };
+        [propertyInput, valueInput].forEach(input => input.addEventListener("keydown", event => {
+            if (event.key === "Enter") {
+                event.preventDefault();
+                void submit();
+            }
+        }));
+        submitButton.addEventListener("click", () => void submit());
+        updatePropertyType();
+        window.setTimeout(() => propertyInput.focus(), 0);
+    }
+
+    onClose(): void {
+        this.contentEl.empty();
+    }
+}
+
+class ConfirmationModal extends Modal {
+    constructor(
+        app: FolderColumnNavigatorPlugin["app"],
+        private readonly title: string,
+        private readonly message: string,
+        private readonly confirmLabel: string,
+        private readonly onConfirm: () => Promise<void> | void
+    ) {
+        super(app);
+    }
+
+    onOpen(): void {
+        this.setTitle(this.title);
+        this.contentEl.createEl("p", { text: this.message });
+        const actions = this.contentEl.createDiv("modal-button-container");
+        actions.createEl("button", { text: "取消" }).addEventListener("click", () => this.close());
+        const confirm = actions.createEl("button", { text: this.confirmLabel, cls: "mod-warning" });
+        confirm.addEventListener("click", () => {
+            this.close();
+            void this.onConfirm();
+        });
+    }
+
+    onClose(): void {
+        this.contentEl.empty();
+    }
+}
+
+class PropertyUpdateSummaryModal extends Modal {
+    constructor(
+        app: FolderColumnNavigatorPlugin["app"],
+        private readonly property: string,
+        private readonly results: Array<{ path: string; value: string }>
+    ) {
+        super(app);
+    }
+
+    onOpen(): void {
+        this.setTitle("属性修改完成");
+        this.contentEl.createEl("p", {
+            text: `已修改 ${this.results.length} 个 Markdown 文件，以下为“${this.property}”的最新值：`
+        });
+        const list = this.contentEl.createDiv("fcn-property-summary-list");
+        this.results.forEach(result => {
+            const row = list.createDiv("fcn-property-summary-item");
+            row.createDiv({ text: result.path, cls: "fcn-property-summary-path" });
+            row.createDiv({ text: result.value, cls: "fcn-property-summary-value" });
+        });
+        const actions = this.contentEl.createDiv("modal-button-container");
+        actions.createEl("button", { text: "完成", cls: "mod-cta" }).addEventListener("click", () => this.close());
+    }
+
+    onClose(): void {
+        this.contentEl.empty();
     }
 }
 
@@ -688,7 +919,9 @@ export default class FolderColumnNavigator extends Plugin {
 
         this.registerEvent(this.app.vault.on("create", () => this.refreshViews()));
         this.registerEvent(this.app.vault.on("delete", () => this.refreshViews()));
-        this.registerEvent(this.app.vault.on("rename", () => this.refreshViews()));
+        this.registerEvent(this.app.vault.on("rename", (item, oldPath) => {
+            void this.handleItemRename(item, oldPath);
+        }));
         this.registerEvent(this.app.metadataCache.on("resolved", () => this.refreshViews()));
 
         this.addRibbonIcon("folder-tree", "打开目录文件列表", () => {
@@ -797,6 +1030,7 @@ export default class FolderColumnNavigator extends Plugin {
             ),
             sortField: isSortField(saved?.sortField) ? saved.sortField : DEFAULT_SETTINGS.sortField,
             sortDirection: isSortDirection(saved?.sortDirection) ? saved.sortDirection : DEFAULT_SETTINGS.sortDirection,
+            customItemOrders: cleanStoredItemOrders(saved?.customItemOrders),
             groupItems: typeof saved?.groupItems === "boolean"
                 ? saved.groupItems
                 : DEFAULT_SETTINGS.groupItems,
@@ -896,8 +1130,43 @@ export default class FolderColumnNavigator extends Plugin {
     }
 
     async toggleSortDirection(): Promise<void> {
+        if (this.settings.sortField === "custom") {
+            return;
+        }
         this.settings.sortDirection = this.settings.sortDirection === "asc" ? "desc" : "asc";
         await this.saveSettings();
+    }
+
+    getCustomItemOrder(parentPath: string): string[] {
+        return this.settings.customItemOrders[normalizeFolderPath(parentPath)] ?? [];
+    }
+
+    async updateCustomItemOrder(parentPath: string, paths: string[]): Promise<void> {
+        const normalizedParentPath = normalizeFolderPath(parentPath);
+        this.settings.customItemOrders = {
+            ...this.settings.customItemOrders,
+            [normalizedParentPath]: [...new Set(paths)]
+        };
+        this.settings.sortField = "custom";
+        this.settings.sortDirection = "asc";
+        await this.saveSettings();
+    }
+
+    /**
+     * Keeps path-based custom orders valid when Obsidian renames a file or an
+     * entire directory tree outside this view.
+     */
+    private async handleItemRename(item: TAbstractFile, oldPath: string): Promise<void> {
+        const nextOrders: Record<string, string[]> = {};
+        const remapPath = (path: string): string => path === oldPath || path.startsWith(`${oldPath}/`)
+            ? `${item.path}${path.slice(oldPath.length)}`
+            : path;
+        Object.entries(this.settings.customItemOrders).forEach(([parentPath, paths]) => {
+            nextOrders[remapPath(parentPath)] = paths.map(remapPath);
+        });
+        this.settings.customItemOrders = nextOrders;
+        await this.saveData(this.settings);
+        this.refreshViews();
     }
 
     async updateNavigationWidth(width: number): Promise<void> {
@@ -1219,7 +1488,7 @@ class FolderColumnNavigatorView extends ItemView {
     private rootFoldersExpanded = false;
     private rootFolderResizeObserver: ResizeObserver | null = null;
     private draggedNavigationPath: string | null = null;
-    private draggedItemPath: string | null = null;
+    private draggedItemPaths: string[] = [];
     private dragHoverTargetPath: string | null = null;
     private dragExpandedTargetPath: string | null = null;
     private dragExpandTimer: number | null = null;
@@ -1232,6 +1501,10 @@ class FolderColumnNavigatorView extends ItemView {
     private readonly columnPreferredWidths = new Map<string, number>();
     private readonly verticalTreeExpandedPaths = new Set<string>();
     private readonly expandedArchiveGroups = new Set<string>();
+    /** Selection is always constrained to direct siblings under one directory. */
+    private readonly selectedItemPaths = new Set<string>();
+    private selectionParentPath: string | null = null;
+    private selectionAnchorPath: string | null = null;
     private verticalTreeWasEnabled = false;
     private lastFocusedRow: { area: "navigation" | "column"; path: string; columnIndex?: number; kind?: string } | null = null;
     private readonly childColumnSelections = new Map<string, { childPath: string; itemPath: string; kind?: string }>();
@@ -1322,7 +1595,8 @@ class FolderColumnNavigatorView extends ItemView {
         [
             ["name", "名称"],
             ["modified", "修改日期"],
-            ["created", "创建日期"]
+            ["created", "创建日期"],
+            ["custom", "自定义排序"]
         ].forEach(([value, label]) => {
             this.sortSelect.createEl("option", { value, text: label });
         });
@@ -1982,23 +2256,18 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     /**
-     * Resolve a folder icon from the folder's current expansion state.
-     * Regular columns use the next column as the source of truth, while the
-     * vertical tree uses its explicit expanded-path set.
+     * Resolve the static icon used outside the vertical tree. Opening a folder
+     * into another horizontal column must not make its icon point down or look
+     * opened because the item itself is not expanded in place.
      */
-    private getFolderStateIcon(folder: TFolder, columnIndex?: number): string | null {
+    private getFolderStateIcon(_folder: TFolder, _columnIndex?: number): string | null {
         if (this.plugin.settings.folderIconStyle === "none") {
             return null;
         }
-        const isExpanded = columnIndex !== undefined
-            ? this.isVerticalTreeColumn(columnIndex)
-                ? this.verticalTreeExpandedPaths.has(folder.path)
-                : this.columnPaths[columnIndex + 1] === folder.path
-            : this.navigationBasePath === folder.path;
         if (this.plugin.settings.folderIconStyle === "chevron") {
-            return isExpanded ? "chevron-down" : "chevron-right";
+            return "chevron-right";
         }
-        return isExpanded ? "folder-open" : "folder-closed";
+        return "folder-closed";
     }
 
     /**
@@ -2205,12 +2474,25 @@ class FolderColumnNavigatorView extends ItemView {
     private startItemDrag(row: HTMLElement, item: TAbstractFile, event: DragEvent): void {
         this.clearNavigationDragState();
         this.clearItemDragState();
-        this.draggedItemPath = item.path;
-        row.addClass("is-item-dragging");
+        if (!this.selectedItemPaths.has(item.path)) {
+            this.replaceSelection(item);
+            this.updateSelectionClasses();
+        }
+        const selectedItems = this.getSelectedItems();
+        this.draggedItemPaths = selectedItems.length > 0
+            ? selectedItems.map(selected => selected.path)
+            : [item.path];
+        this.draggedItemPaths.forEach(path => {
+            this.containerEl.querySelectorAll<HTMLElement>('[data-fcn-row="column"]').forEach(candidate => {
+                if (candidate.dataset.fcnPath === path) {
+                    candidate.addClass("is-item-dragging");
+                }
+            });
+        });
         if (event.dataTransfer) {
             event.dataTransfer.effectAllowed = "move";
-            event.dataTransfer.setData("application/x-folder-column-navigator-path", item.path);
-            event.dataTransfer.setData("text/plain", item.path);
+            event.dataTransfer.setData("application/x-folder-column-navigator-paths", JSON.stringify(this.draggedItemPaths));
+            event.dataTransfer.setData("text/plain", this.draggedItemPaths.join("\n"));
         }
     }
 
@@ -2219,8 +2501,8 @@ class FolderColumnNavigatorView extends ItemView {
             if (isRootFolderReorderTarget && this.draggedNavigationPath) {
                 return;
             }
-            const item = this.getDraggedItem();
-            if (!item || !this.canMoveItemTo(item, folder)) {
+            const items = this.getDraggedItems();
+            if (items.length === 0 || !this.canMoveItemsTo(items, folder)) {
                 return;
             }
             event.preventDefault();
@@ -2241,20 +2523,124 @@ class FolderColumnNavigatorView extends ItemView {
             if (isRootFolderReorderTarget && this.draggedNavigationPath) {
                 return;
             }
-            const item = this.getDraggedItem();
-            if (!item || !this.canMoveItemTo(item, folder)) {
+            const items = this.getDraggedItems();
+            if (items.length === 0 || !this.canMoveItemsTo(items, folder)) {
                 return;
             }
             event.preventDefault();
+            event.stopPropagation();
             this.clearItemDragState();
-            void this.moveItemTo(item, folder);
+            void this.moveItemsTo(items, folder);
         });
     }
 
-    private getDraggedItem(): TAbstractFile | null {
-        return this.draggedItemPath
-            ? this.plugin.app.vault.getAbstractFileByPath(this.draggedItemPath)
-            : null;
+    private getDraggedItems(): TAbstractFile[] {
+        return this.draggedItemPaths
+            .map(path => this.plugin.app.vault.getAbstractFileByPath(path))
+            .filter((item): item is TAbstractFile => item instanceof TFile || item instanceof TFolder);
+    }
+
+    private enableColumnMoveDropTarget(column: HTMLElement, folder: TFolder): void {
+        column.addEventListener("dragover", event => {
+            if (event.defaultPrevented) {
+                return;
+            }
+            const items = this.getDraggedItems();
+            if (items.length === 0 || !this.canMoveItemsTo(items, folder)) {
+                return;
+            }
+            event.preventDefault();
+            column.addClass("is-column-move-drop-target");
+            if (event.dataTransfer) {
+                event.dataTransfer.dropEffect = "move";
+            }
+        });
+        column.addEventListener("dragleave", event => {
+            if (!(event.relatedTarget instanceof Node) || !column.contains(event.relatedTarget)) {
+                column.removeClass("is-column-move-drop-target");
+            }
+        });
+        column.addEventListener("drop", event => {
+            if (event.defaultPrevented) {
+                return;
+            }
+            const items = this.getDraggedItems();
+            if (items.length === 0 || !this.canMoveItemsTo(items, folder)) {
+                return;
+            }
+            event.preventDefault();
+            column.removeClass("is-column-move-drop-target");
+            this.clearItemDragState();
+            void this.moveItemsTo(items, folder);
+        });
+    }
+
+    private enableItemReorderDropTarget(
+        row: HTMLElement,
+        targetItem: TAbstractFile,
+        parent: TFolder,
+        canDropIntoFolder: boolean
+    ): void {
+        row.addEventListener("dragover", event => {
+            const items = this.getDraggedItems();
+            if (items.length === 0 || items.some(item => item.path === targetItem.path)) {
+                return;
+            }
+            const zone = this.getItemDropZone(row, event, canDropIntoFolder);
+            if (zone === "inside" && targetItem instanceof TFolder && this.canMoveItemsTo(items, targetItem)) {
+                event.preventDefault();
+                event.stopPropagation();
+                row.removeClass("is-item-drop-before", "is-item-drop-after");
+                row.addClass("is-move-drop-target");
+                this.scheduleDragTargetExpansion(targetItem, row);
+                return;
+            }
+            if (zone !== "inside" && this.canReorderItems(items, targetItem, parent)) {
+                event.preventDefault();
+                event.stopPropagation();
+                row.removeClass("is-move-drop-target");
+                row.toggleClass("is-item-drop-before", zone === "before");
+                row.toggleClass("is-item-drop-after", zone === "after");
+                this.cancelDragTargetExpansion();
+            }
+        });
+        row.addEventListener("dragleave", event => {
+            if (event.relatedTarget instanceof Node && row.contains(event.relatedTarget)) {
+                return;
+            }
+            row.removeClass("is-move-drop-target", "is-item-drop-before", "is-item-drop-after");
+            this.cancelDragTargetExpansion(targetItem.path);
+        });
+        row.addEventListener("drop", event => {
+            const items = this.getDraggedItems();
+            if (items.length === 0 || items.some(item => item.path === targetItem.path)) {
+                return;
+            }
+            const zone = this.getItemDropZone(row, event, canDropIntoFolder);
+            if (zone === "inside" && targetItem instanceof TFolder && this.canMoveItemsTo(items, targetItem)) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.clearItemDragState();
+                void this.moveItemsTo(items, targetItem);
+                return;
+            }
+            if (zone !== "inside" && this.canReorderItems(items, targetItem, parent)) {
+                event.preventDefault();
+                event.stopPropagation();
+                const insertAfter = zone === "after";
+                this.clearItemDragState();
+                void this.reorderItems(items, targetItem, parent, insertAfter);
+            }
+        });
+    }
+
+    private getItemDropZone(row: HTMLElement, event: DragEvent, canDropInside: boolean): "before" | "inside" | "after" {
+        const rect = row.getBoundingClientRect();
+        const ratio = rect.height > 0 ? (event.clientY - rect.top) / rect.height : 0.5;
+        if (!canDropInside) {
+            return ratio < 0.5 ? "before" : "after";
+        }
+        return ratio < 0.25 ? "before" : ratio > 0.75 ? "after" : "inside";
     }
 
     private scheduleDragTargetExpansion(folder: TFolder, row: HTMLElement): void {
@@ -2297,9 +2683,17 @@ class FolderColumnNavigatorView extends ItemView {
     private clearItemDragState(): void {
         this.cancelDragTargetExpansion();
         this.dragExpandedTargetPath = null;
-        this.draggedItemPath = null;
-        this.containerEl?.querySelectorAll<HTMLElement>(".is-item-dragging, .is-move-drop-target").forEach(item => {
-            item.removeClass("is-item-dragging", "is-move-drop-target");
+        this.draggedItemPaths = [];
+        this.containerEl?.querySelectorAll<HTMLElement>(
+            ".is-item-dragging, .is-move-drop-target, .is-column-move-drop-target, .is-item-drop-before, .is-item-drop-after"
+        ).forEach(item => {
+            item.removeClass(
+                "is-item-dragging",
+                "is-move-drop-target",
+                "is-column-move-drop-target",
+                "is-item-drop-before",
+                "is-item-drop-after"
+            );
         });
     }
 
@@ -2340,9 +2734,12 @@ class FolderColumnNavigatorView extends ItemView {
         this.breadcrumbEl.setText(folder.path === ROOT_PATH ? this.plugin.app.vault.getName() : folder.path);
         this.sortSelect.value = this.plugin.settings.sortField;
         setIcon(this.sortDirectionButton, this.plugin.settings.sortDirection === "asc" ? "arrow-up" : "arrow-down");
+        this.sortDirectionButton.disabled = this.plugin.settings.sortField === "custom";
         this.sortDirectionButton.setAttribute(
             "aria-label",
-            this.plugin.settings.sortDirection === "asc" ? "当前正序，点击切换为倒序" : "当前倒序，点击切换为正序"
+            this.plugin.settings.sortField === "custom"
+                ? "自定义排序由拖拽顺序决定"
+                : this.plugin.settings.sortDirection === "asc" ? "当前正序，点击切换为倒序" : "当前倒序，点击切换为正序"
         );
         this.updateNavigationFilterButtons();
     }
@@ -2423,6 +2820,7 @@ class FolderColumnNavigatorView extends ItemView {
             filterBadge.addEventListener("click", () => this.clearFilter());
         }
         const list = column.createDiv("fcn-column-list");
+        this.enableColumnMoveDropTarget(column, folder);
         const divider = column.createDiv("fcn-column-resize-divider");
         divider.setAttribute("role", "separator");
         divider.setAttribute("aria-label", `调整“${folder.name}”列宽度`);
@@ -2684,6 +3082,8 @@ class FolderColumnNavigatorView extends ItemView {
             row.setCssProps({ "--fcn-tree-indent": `${treeDepth * 18}px` });
         }
         row.toggleClass("is-selected", this.isFolderSelected(folder.path, columnIndex));
+        row.toggleClass("is-multi-selected", this.selectedItemPaths.has(folder.path));
+        row.setAttribute("aria-selected", String(this.selectedItemPaths.has(folder.path)));
         row.setAttribute("tabindex", "0");
         const isVerticalTreeFolder = this.isVerticalTreeColumn(columnIndex);
         const isExpanded = isVerticalTreeFolder
@@ -2710,13 +3110,27 @@ class FolderColumnNavigatorView extends ItemView {
             row.createSpan({ text: `${visibleChildCount}`, cls: "fcn-item-meta" });
         }
         this.enableItemDragging(row, folder);
-        this.enableMoveDropTarget(row, folder);
-        row.addEventListener("click", () => this.handleFolderClick(folder, columnIndex));
+        const parent = this.plugin.getFolder(parentPath) ?? folder.parent;
+        if (parent) {
+            this.enableItemReorderDropTarget(row, folder, parent, true);
+        }
+        row.addEventListener("click", event => {
+            if (this.handleItemSelectionClick(row, folder, event)) {
+                return;
+            }
+            this.handleFolderClick(folder, columnIndex);
+        });
         row.addEventListener("contextmenu", event => {
             event.preventDefault();
+            this.prepareContextSelection(row, folder);
             this.markKeyboardSelection(row);
             row.focus();
-            this.showFolderContextMenu(folder, row, event, columnIndex);
+            const selectedItems = this.getSelectedItems();
+            if (selectedItems.length > 1) {
+                this.showBatchContextMenu(selectedItems, row, event);
+            } else {
+                this.showFolderContextMenu(folder, row, event, columnIndex);
+            }
         });
     }
 
@@ -2795,6 +3209,8 @@ class FolderColumnNavigatorView extends ItemView {
             row.setCssProps({ "--fcn-tree-indent": `${treeDepth * 18}px` });
         }
         row.toggleClass("is-selected", file.path === this.selectedFilePath);
+        row.toggleClass("is-multi-selected", this.selectedItemPaths.has(file.path));
+        row.setAttribute("aria-selected", String(this.selectedItemPaths.has(file.path)));
         row.setAttribute("tabindex", "0");
         const iconName = isFolderNote ? this.getFolderNoteIcon() : this.getFileIcon(file);
         this.createItemIcon(row, iconName);
@@ -2807,18 +3223,157 @@ class FolderColumnNavigatorView extends ItemView {
             row.createSpan({ text: file.extension.toUpperCase(), cls: "fcn-item-meta" });
         }
         this.enableItemDragging(row, file);
+        const parent = this.plugin.getFolder(parentPath) ?? file.parent;
+        if (parent) {
+            this.enableItemReorderDropTarget(row, file, parent, false);
+        }
         row.addEventListener("click", event => {
+            if (this.handleItemSelectionClick(row, file, event)) {
+                return;
+            }
             this.selectedFilePath = file.path;
             this.activeColumnIndex = columnIndex;
             this.renderColumns();
-            void this.openFile(file, event.metaKey);
+            void this.openFile(file);
         });
         row.addEventListener("contextmenu", event => {
             event.preventDefault();
+            this.prepareContextSelection(row, file);
             this.markKeyboardSelection(row);
             row.focus();
-            this.showFileContextMenu(file, row, event);
+            const selectedItems = this.getSelectedItems();
+            if (selectedItems.length > 1) {
+                this.showBatchContextMenu(selectedItems, row, event);
+            } else {
+                this.showFileContextMenu(file, row, event);
+            }
         });
+    }
+
+    private handleItemSelectionClick(row: HTMLElement, item: TAbstractFile, event: MouseEvent): boolean {
+        const isToggle = event.metaKey || event.ctrlKey;
+        if (event.shiftKey) {
+            event.preventDefault();
+            this.clearOpenedFileSelectionHighlight();
+            this.selectRangeTo(row, item);
+            row.focus();
+            this.markKeyboardSelection(row);
+            return true;
+        }
+        if (isToggle) {
+            event.preventDefault();
+            this.clearOpenedFileSelectionHighlight();
+            this.toggleItemSelection(item);
+            this.updateSelectionClasses();
+            row.focus();
+            this.markKeyboardSelection(row);
+            return true;
+        }
+        this.replaceSelection(item);
+        this.updateSelectionClasses();
+        return false;
+    }
+
+    private replaceSelection(item: TAbstractFile): void {
+        this.selectedItemPaths.clear();
+        this.selectedItemPaths.add(item.path);
+        this.selectionParentPath = item.parent?.path ?? null;
+        this.selectionAnchorPath = item.path;
+    }
+
+    private clearItemSelection(): void {
+        this.selectedItemPaths.clear();
+        this.selectionParentPath = null;
+        this.selectionAnchorPath = null;
+        this.updateSelectionClasses();
+    }
+
+    private clearOpenedFileSelectionHighlight(): void {
+        this.selectedFilePath = null;
+        this.containerEl.querySelectorAll<HTMLElement>('[data-fcn-kind="file"].is-selected')
+            .forEach(row => row.removeClass("is-selected"));
+    }
+
+    private toggleItemSelection(item: TAbstractFile): void {
+        const parentPath = item.parent?.path ?? null;
+        if (!parentPath || this.selectionParentPath !== parentPath) {
+            this.replaceSelection(item);
+            return;
+        }
+        if (this.selectedItemPaths.has(item.path)) {
+            this.selectedItemPaths.delete(item.path);
+            if (this.selectionAnchorPath === item.path) {
+                this.selectionAnchorPath = this.selectedItemPaths.values().next().value ?? null;
+            }
+            if (this.selectedItemPaths.size === 0) {
+                this.selectionParentPath = null;
+                this.selectionAnchorPath = null;
+            }
+            return;
+        }
+        this.selectedItemPaths.add(item.path);
+        this.selectionAnchorPath = item.path;
+    }
+
+    private selectRangeTo(row: HTMLElement, item: TAbstractFile): void {
+        const parentPath = item.parent?.path ?? null;
+        if (!parentPath || this.selectionParentPath !== parentPath || !this.selectionAnchorPath) {
+            this.replaceSelection(item);
+            this.updateSelectionClasses();
+            return;
+        }
+        const rows = this.getSelectableSiblingRows(parentPath, row.dataset.fcnColumn);
+        const anchorIndex = rows.findIndex(candidate => candidate.dataset.fcnPath === this.selectionAnchorPath);
+        const targetIndex = rows.indexOf(row);
+        if (anchorIndex < 0 || targetIndex < 0) {
+            this.replaceSelection(item);
+            this.updateSelectionClasses();
+            return;
+        }
+        this.selectedItemPaths.clear();
+        rows.slice(Math.min(anchorIndex, targetIndex), Math.max(anchorIndex, targetIndex) + 1)
+            .forEach(candidate => {
+                const path = candidate.dataset.fcnPath;
+                if (path) {
+                    this.selectedItemPaths.add(path);
+                }
+            });
+        this.updateSelectionClasses();
+    }
+
+    private getSelectableSiblingRows(parentPath: string, columnIndex?: string): HTMLElement[] {
+        return Array.from(this.containerEl.querySelectorAll<HTMLElement>('[data-fcn-row="column"]'))
+            .filter(row => row.dataset.fcnKind === "file" || row.dataset.fcnKind === "folder")
+            .filter(row => row.dataset.fcnParentPath === parentPath)
+            .filter(row => columnIndex === undefined || row.dataset.fcnColumn === columnIndex);
+    }
+
+    private updateSelectionClasses(): void {
+        this.containerEl.querySelectorAll<HTMLElement>('[data-fcn-row="column"]').forEach(row => {
+            const selected = Boolean(row.dataset.fcnPath && this.selectedItemPaths.has(row.dataset.fcnPath));
+            row.toggleClass("is-multi-selected", selected);
+            row.setAttribute("aria-selected", String(selected));
+        });
+    }
+
+    private prepareContextSelection(row: HTMLElement, item: TAbstractFile): void {
+        if (!this.selectedItemPaths.has(item.path)) {
+            this.clearOpenedFileSelectionHighlight();
+            this.replaceSelection(item);
+            this.updateSelectionClasses();
+        }
+        this.selectionAnchorPath = item.path;
+        row.addClass("is-multi-selected");
+    }
+
+    private getSelectedItems(): TAbstractFile[] {
+        const parent = this.selectionParentPath ? this.plugin.getFolder(this.selectionParentPath) : null;
+        if (!parent) {
+            return [];
+        }
+        return [...parent.children]
+            .filter(item => this.selectedItemPaths.has(item.path))
+            .sort((left, right) => this.compareItems(left, right, parent));
     }
 
     private createItemContent(parent: HTMLElement, name: string, detail: string | null): void {
@@ -2928,6 +3483,42 @@ class FolderColumnNavigatorView extends ItemView {
         }
     }
 
+    private showBatchContextMenu(items: TAbstractFile[], origin: HTMLElement, event?: MouseEvent): void {
+        const parent = items[0]?.parent;
+        if (!parent || items.some(item => item.parent?.path !== parent.path)) {
+            return;
+        }
+        const menu = this.createContextMenu(parent, origin, event);
+        menu.addItem(item => item
+            .setSection("action")
+            .setTitle(`移动 ${items.length} 个项目到…`)
+            .setIcon("folder-input")
+            .onClick(() => this.promptBatchMove(items)));
+        const markdownFiles = items.filter(
+            (item): item is TFile => item instanceof TFile && item.extension.toLocaleLowerCase() === "md"
+        );
+        if (markdownFiles.length === items.length) {
+            menu.addItem(item => item
+                .setSection("action")
+                .setTitle("批量设置属性")
+                .setIcon("list-plus")
+                .onClick(() => this.promptBatchSetProperty(markdownFiles)));
+        }
+        menu.addItem(item => item
+            .setSection("action")
+            .setTitle("在当前目录新建文件夹")
+            .setIcon("folder-plus")
+            .onClick(() => this.promptCreateFolder(parent)));
+        menu.addSeparator();
+        menu.addItem(item => item
+            .setSection("danger")
+            .setTitle(`删除 ${items.length} 个项目`)
+            .setIcon("trash-2")
+            .setWarning(true)
+            .onClick(() => this.confirmBatchDelete(items)));
+        this.showContextMenu(menu, origin, event);
+    }
+
     private showFileContextMenu(file: TFile, origin: HTMLElement, event?: MouseEvent): void {
         const menu = this.createContextMenu(file, origin, event);
         menu.addItem(item => item.setSection("open").setTitle("打开").setIcon("file").onClick(() => void this.openFile(file)));
@@ -2975,6 +3566,13 @@ class FolderColumnNavigatorView extends ItemView {
             menu.addSeparator();
             menu.addItem(item => item.setSection("action").setTitle("重命名").setIcon("edit-3").onClick(() => this.promptRename(folder)));
             menu.addItem(item => item.setSection("action").setTitle("移动到…").setIcon("folder-input").onClick(() => this.promptMove(folder)));
+            menu.addSeparator();
+            menu.addItem(item => item
+                .setSection("danger")
+                .setTitle("删除目录")
+                .setIcon("trash-2")
+                .setWarning(true)
+                .onClick(() => void this.deleteItem(folder)));
         }
         this.addExtensionMenuItems(menu, folder);
         this.showContextMenu(menu, origin, event);
@@ -3161,53 +3759,323 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private promptMove(item: TAbstractFile): void {
-        const excludedPaths = new Set<string>();
-        if (item.parent) {
-            excludedPaths.add(item.parent.path);
+        this.promptBatchMove([item]);
+    }
+
+    private promptBatchMove(items: TAbstractFile[]): void {
+        const parentPath = items[0]?.parent?.path;
+        if (!parentPath || items.some(item => item.parent?.path !== parentPath)) {
+            new Notice("只能批量移动同一目录下的项目。", 3000);
+            return;
         }
-        if (item instanceof TFolder) {
+        const excludedPaths = new Set<string>();
+        excludedPaths.add(parentPath);
+        items.filter((item): item is TFolder => item instanceof TFolder).forEach(item => {
             this.plugin.app.vault.getAllLoadedFiles()
                 .filter((candidate): candidate is TFolder => candidate instanceof TFolder)
                 .filter(candidate => candidate.path === item.path || candidate.path.startsWith(`${item.path}/`))
                 .forEach(candidate => excludedPaths.add(candidate.path));
-        }
+        });
         new FolderDestinationModal(this.plugin.app, excludedPaths, async targetFolder => {
-            await this.moveItemTo(item, targetFolder);
+            await this.moveItemsTo(items, targetFolder);
         }).open();
     }
 
-    private canMoveItemTo(item: TAbstractFile, targetFolder: TFolder): boolean {
-        if (!item.parent || targetFolder.path === item.parent.path) {
-            return false;
-        }
-        if (item instanceof TFolder && (targetFolder.path === item.path || targetFolder.path.startsWith(`${item.path}/`))) {
-            return false;
-        }
-        return !this.plugin.app.vault.getAbstractFileByPath(joinVaultPath(targetFolder, item.name));
+    private canMoveItemsTo(items: TAbstractFile[], targetFolder: TFolder): boolean {
+        return items.length > 0 && items.every(item => {
+            if (!item.parent || targetFolder.path === item.parent.path) {
+                return false;
+            }
+            if (item instanceof TFolder && (targetFolder.path === item.path || targetFolder.path.startsWith(`${item.path}/`))) {
+                return false;
+            }
+            return !this.plugin.app.vault.getAbstractFileByPath(joinVaultPath(targetFolder, item.name));
+        });
     }
 
-    private async moveItemTo(item: TAbstractFile, targetFolder: TFolder): Promise<void> {
-        if (!item.parent || targetFolder.path === item.parent.path) {
+    private async moveItemsTo(items: TAbstractFile[], targetFolder: TFolder): Promise<void> {
+        if (items.length === 0) {
             return;
         }
-        if (item instanceof TFolder && (targetFolder.path === item.path || targetFolder.path.startsWith(`${item.path}/`))) {
+        if (items.some(item => !item.parent || targetFolder.path === item.parent.path)) {
+            new Notice("目标目录不能是项目当前所在目录。", 3000);
+            return;
+        }
+        if (items.some(item => item instanceof TFolder &&
+            (targetFolder.path === item.path || targetFolder.path.startsWith(`${item.path}/`)))) {
             new Notice("不能将文件夹移动到自身或其子目录。", 3000);
             return;
         }
-        const nextPath = joinVaultPath(targetFolder, item.name);
-        if (this.plugin.app.vault.getAbstractFileByPath(nextPath)) {
-            new Notice("目标目录已有同名文件或目录。", 3000);
+        const moves = items.map(item => ({
+            item,
+            nextPath: joinVaultPath(targetFolder, item.name),
+            kind: item instanceof TFolder ? "folder" as const : "file" as const
+        }));
+        if (moves.some(move => Boolean(this.plugin.app.vault.getAbstractFileByPath(move.nextPath)))) {
+            new Notice("目标目录已有同名文件或目录，未移动任何项目。", 3500);
             return;
         }
-        const itemKind = item instanceof TFolder ? "folder" : "file";
-        await this.plugin.app.fileManager.renameFile(item, nextPath);
-        this.revealMovedItem(targetFolder, nextPath, itemKind);
+        try {
+            for (const move of moves) {
+                await this.plugin.app.fileManager.renameFile(move.item, move.nextPath);
+            }
+        } catch (error) {
+            console.error("Folder Column Navigator: batch move failed", error);
+            new Notice("移动过程中发生错误，请检查文件状态。", 4000);
+            this.refresh();
+            return;
+        }
+        this.clearItemSelection();
+        const firstMove = moves[0];
+        if (firstMove) {
+            this.revealMovedItem(targetFolder, firstMove.nextPath, firstMove.kind);
+        }
+        new Notice(`已移动 ${moves.length} 个项目。`, 2500);
+    }
+
+    private canReorderItems(items: TAbstractFile[], targetItem: TAbstractFile, parent: TFolder): boolean {
+        if (items.length === 0 || targetItem.parent?.path !== parent.path ||
+            items.some(item => item.parent?.path !== parent.path)) {
+            return false;
+        }
+        if (!this.plugin.settings.groupItems || !this.plugin.settings.groupProperty.trim()) {
+            return true;
+        }
+        const children = [...parent.children].sort((left, right) => this.compareItems(left, right, parent));
+        const groupByPath = new Map<string, string>();
+        this.getItemGroups(children).forEach(group => {
+            group.items.forEach(item => groupByPath.set(item.path, group.key));
+        });
+        const targetGroup = groupByPath.get(targetItem.path);
+        return items.every(item => groupByPath.get(item.path) === targetGroup);
+    }
+
+    private async reorderItems(
+        items: TAbstractFile[],
+        targetItem: TAbstractFile,
+        parent: TFolder,
+        insertAfter: boolean
+    ): Promise<void> {
+        if (!this.canReorderItems(items, targetItem, parent)) {
+            return;
+        }
+        const selectedPaths = new Set(items.map(item => item.path));
+        const current = [...parent.children].sort((left, right) => this.compareItems(left, right, parent));
+        const dragged = current.filter(item => selectedPaths.has(item.path));
+        const remaining = current.filter(item => !selectedPaths.has(item.path));
+        const targetIndex = remaining.findIndex(item => item.path === targetItem.path);
+        if (targetIndex < 0) {
+            return;
+        }
+        remaining.splice(targetIndex + (insertAfter ? 1 : 0), 0, ...dragged);
+        await this.plugin.updateCustomItemOrder(parent.path, remaining.map(item => item.path));
     }
 
     private async deleteItem(item: TAbstractFile): Promise<void> {
         if (await this.plugin.app.fileManager.promptForDeletion(item)) {
             await this.plugin.app.fileManager.trashFile(item);
         }
+    }
+
+    private confirmBatchDelete(items: TAbstractFile[]): void {
+        new ConfirmationModal(
+            this.plugin.app,
+            "确认删除",
+            `确定要将选中的 ${items.length} 个文件或目录移到系统废纸篓吗？`,
+            "删除",
+            async () => {
+                let deletedCount = 0;
+                try {
+                    for (const item of items) {
+                        await this.plugin.app.fileManager.trashFile(item);
+                        deletedCount += 1;
+                    }
+                } catch (error) {
+                    console.error("Folder Column Navigator: batch deletion failed", error);
+                    new Notice(`已删除 ${deletedCount} 个项目，后续删除失败。`, 4000);
+                    this.refresh();
+                    return;
+                }
+                this.clearItemSelection();
+                new Notice(`已删除 ${deletedCount} 个项目。`, 2500);
+            }
+        ).open();
+    }
+
+    private promptBatchSetProperty(files: TFile[]): void {
+        if (files.length === 0 || files.some(file => file.extension.toLocaleLowerCase() !== "md")) {
+            return;
+        }
+        const propertyNames = new Set(["group", "aliases", "tags"]);
+        this.plugin.app.vault.getMarkdownFiles().forEach(file => {
+            const frontmatter = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter;
+            if (!frontmatter) {
+                return;
+            }
+            Object.keys(frontmatter)
+                .filter(property => property !== "position")
+                .forEach(property => propertyNames.add(property));
+        });
+        new BatchPropertyModal(
+            this.plugin.app,
+            [...propertyNames].sort((left, right) => left.localeCompare(right)),
+            property => this.resolveBatchPropertyType(files, property),
+            request => this.applyBatchProperty(files, request)
+        ).open();
+    }
+
+    private resolveBatchPropertyType(files: TFile[], property: string): PropertyTypeResolution {
+        const detectedTypes = new Set<PropertyValueType>();
+        files.forEach(file => {
+            const frontmatter = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter;
+            if (!frontmatter || !Object.prototype.hasOwnProperty.call(frontmatter, property)) {
+                return;
+            }
+            const detected = this.inferPropertyValueType(frontmatter[property]);
+            if (detected) {
+                detectedTypes.add(detected);
+            }
+        });
+        if (detectedTypes.size > 1) {
+            return {
+                type: null,
+                error: "所选文件中的同名属性类型不一致，不能批量设置。"
+            };
+        }
+        return {
+            type: detectedTypes.values().next().value ?? null,
+            error: null
+        };
+    }
+
+    private inferPropertyValueType(value: unknown): PropertyValueType | null {
+        if (Array.isArray(value)) {
+            return "list";
+        }
+        if (typeof value === "boolean") {
+            return "checkbox";
+        }
+        if (typeof value === "number" && Number.isFinite(value)) {
+            return "number";
+        }
+        if (value instanceof Date && !Number.isNaN(value.getTime())) {
+            return value.getHours() || value.getMinutes() || value.getSeconds() ? "datetime" : "date";
+        }
+        if (typeof value === "string") {
+            const normalized = value.trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+                return "date";
+            }
+            if (/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/.test(normalized)) {
+                return "datetime";
+            }
+            return "text";
+        }
+        return null;
+    }
+
+    private isValidDateParts(year: number, month: number, day: number): boolean {
+        const date = new Date(year, month - 1, day);
+        return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+    }
+
+    private parsePropertyValue(type: PropertyValueType, rawValue: string): { value: unknown; error: string | null } {
+        if (type === "text") {
+            return { value: rawValue, error: null };
+        }
+        if (type === "list") {
+            const values = rawValue.split(/[,，\n]/).map(value => value.trim()).filter(Boolean);
+            return values.length > 0
+                ? { value: values, error: null }
+                : { value: null, error: "请输入至少一个列表值。" };
+        }
+        if (type === "number") {
+            const value = Number(rawValue);
+            return Number.isFinite(value)
+                ? { value, error: null }
+                : { value: null, error: "属性值必须是有效数字。" };
+        }
+        if (type === "checkbox") {
+            const normalized = rawValue.toLocaleLowerCase();
+            if (["true", "1", "是", "勾选", "checked"].includes(normalized)) {
+                return { value: true, error: null };
+            }
+            if (["false", "0", "否", "未勾选", "unchecked"].includes(normalized)) {
+                return { value: false, error: null };
+            }
+            return { value: null, error: "复选框值请输入 true/false、是/否或 1/0。" };
+        }
+        if (type === "date") {
+            const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(rawValue);
+            if (!match || !this.isValidDateParts(Number(match[1]), Number(match[2]), Number(match[3]))) {
+                return { value: null, error: "日期必须使用 YYYY-MM-DD 格式。" };
+            }
+            return { value: rawValue, error: null };
+        }
+        const match = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})$/.exec(rawValue);
+        if (!match ||
+            !this.isValidDateParts(Number(match[1]), Number(match[2]), Number(match[3])) ||
+            Number(match[4]) > 23 ||
+            Number(match[5]) > 59) {
+            return { value: null, error: "日期时间必须使用 YYYY-MM-DDTHH:mm 格式。" };
+        }
+        return { value: rawValue.replace(" ", "T"), error: null };
+    }
+
+    private async applyBatchProperty(files: TFile[], request: BatchPropertyRequest): Promise<string | null> {
+        const resolution = this.resolveBatchPropertyType(files, request.property);
+        if (resolution.error) {
+            return resolution.error;
+        }
+        if (resolution.type && resolution.type !== request.type) {
+            return "输入类型与现有属性类型不匹配。";
+        }
+        const parsed = this.parsePropertyValue(request.type, request.rawValue);
+        if (parsed.error) {
+            return parsed.error;
+        }
+        const results: Array<{ path: string; value: string }> = [];
+        try {
+            for (const file of files) {
+                let latestValue: unknown = parsed.value;
+                await this.plugin.app.fileManager.processFrontMatter(file, frontmatter => {
+                    if (request.type === "list") {
+                        const existing = Array.isArray(frontmatter[request.property])
+                            ? frontmatter[request.property]
+                            : [];
+                        const additions = parsed.value as unknown[];
+                        latestValue = [...existing];
+                        additions.forEach(addition => {
+                            if (!(latestValue as unknown[]).some(value => String(value) === String(addition))) {
+                                (latestValue as unknown[]).push(addition);
+                            }
+                        });
+                    }
+                    frontmatter[request.property] = latestValue;
+                });
+                results.push({
+                    path: file.path,
+                    value: this.formatPropertySummaryValue(latestValue)
+                });
+            }
+        } catch (error) {
+            console.error("Folder Column Navigator: batch property update failed", error);
+            return `属性写入失败；已成功修改 ${results.length} 个文件，请检查文件状态。`;
+        }
+        window.setTimeout(() => {
+            new PropertyUpdateSummaryModal(this.plugin.app, request.property, results).open();
+        }, 0);
+        return null;
+    }
+
+    private formatPropertySummaryValue(value: unknown): string {
+        if (Array.isArray(value)) {
+            return value.map(entry => String(entry)).join(", ");
+        }
+        if (value instanceof Date) {
+            return value.toISOString();
+        }
+        return String(value);
     }
 
     private promptCreateNote(folder: TFolder): void {
@@ -3404,6 +4272,14 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private compareItems(a: TAbstractFile, b: TAbstractFile, parent: TFolder): number {
+        if (this.plugin.settings.sortField === "custom") {
+            const order = new Map(this.plugin.getCustomItemOrder(parent.path).map((path, index) => [path, index]));
+            const aIndex = order.get(a.path);
+            const bIndex = order.get(b.path);
+            if (aIndex !== undefined || bIndex !== undefined) {
+                return (aIndex ?? Number.MAX_SAFE_INTEGER) - (bIndex ?? Number.MAX_SAFE_INTEGER);
+            }
+        }
         const folderNoteDifference = Number(this.isFolderNote(b, parent)) - Number(this.isFolderNote(a, parent));
         if (folderNoteDifference !== 0) {
             return folderNoteDifference;
@@ -3430,6 +4306,7 @@ class FolderColumnNavigatorView extends ItemView {
             return;
         }
         this.rememberNavigationPosition();
+        this.clearItemSelection();
         const position = this.navigationPositions.get(path);
         if (position) {
             this.restoreNavigationPosition(path, position);
@@ -3457,6 +4334,7 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private restoreNavigationPosition(path: string, position: NavigationPosition): void {
+        this.clearItemSelection();
         this.setColumnState(path, position.columnPaths);
         this.syncVerticalTreeExpansionFromColumnPaths();
         this.selectedFilePath = position.selectedFilePath;
@@ -3485,6 +4363,9 @@ class FolderColumnNavigatorView extends ItemView {
     private previewNavigationPath(path: string): void {
         if (!this.plugin.getFolder(path)) {
             return;
+        }
+        if (this.draggedItemPaths.length === 0) {
+            this.clearItemSelection();
         }
         this.setColumnState(path, [path]);
         this.selectedFilePath = null;
@@ -3856,6 +4737,12 @@ class FolderColumnNavigatorView extends ItemView {
         if (!navigationRow && !columnRow) {
             row.focus();
         }
+        if (event.shiftKey && (event.key === "ArrowUp" || event.key === "ArrowDown") &&
+            columnRow && (columnRow.dataset.fcnKind === "file" || columnRow.dataset.fcnKind === "folder")) {
+            event.preventDefault();
+            this.extendItemSelection(columnRow, event.key === "ArrowDown" ? 1 : -1);
+            return;
+        }
         if (event.shiftKey && event.key === "ArrowUp" && columnRow && this.plugin.settings.showRootFoldersAtTop) {
             event.preventDefault();
             this.focusNavigationPath();
@@ -3875,8 +4762,17 @@ class FolderColumnNavigatorView extends ItemView {
     private showContextMenuForRow(row: HTMLElement): void {
         const path = row.dataset.fcnPath ?? "";
         const kind = row.dataset.fcnKind;
+        const abstractItem = this.plugin.app.vault.getAbstractFileByPath(path);
+        if ((abstractItem instanceof TFile || abstractItem instanceof TFolder) && row.dataset.fcnRow === "column") {
+            this.prepareContextSelection(row, abstractItem);
+            const selectedItems = this.getSelectedItems();
+            if (selectedItems.length > 1) {
+                this.showBatchContextMenu(selectedItems, row);
+                return;
+            }
+        }
         if (kind === "file") {
-            const file = this.plugin.app.vault.getAbstractFileByPath(path);
+            const file = abstractItem;
             if (file instanceof TFile) {
                 this.showFileContextMenu(file, row);
             }
@@ -3891,6 +4787,30 @@ class FolderColumnNavigatorView extends ItemView {
                 this.showFolderContextMenu(folder, row, undefined, columnIndex);
             }
         }
+    }
+
+    private extendItemSelection(row: HTMLElement, offset: number): void {
+        const path = row.dataset.fcnPath ?? "";
+        const item = this.plugin.app.vault.getAbstractFileByPath(path);
+        if (!(item instanceof TFile || item instanceof TFolder) || !item.parent) {
+            return;
+        }
+        if (this.selectionParentPath !== item.parent.path || this.selectedItemPaths.size === 0) {
+            this.replaceSelection(item);
+        }
+        const rows = this.getSelectableSiblingRows(item.parent.path, row.dataset.fcnColumn);
+        const currentIndex = rows.indexOf(row);
+        const nextRow = rows[Math.max(0, Math.min(rows.length - 1, currentIndex + offset))];
+        const nextPath = nextRow?.dataset.fcnPath;
+        if (!nextRow || !nextPath) {
+            return;
+        }
+        this.selectedItemPaths.add(nextPath);
+        this.selectionAnchorPath ??= item.path;
+        this.updateSelectionClasses();
+        nextRow.focus();
+        this.markKeyboardSelection(nextRow);
+        this.ensureRowVisibleVertically(nextRow);
     }
 
     private resolveFilterScope(row: HTMLElement | null): FilterScope | null {
@@ -4800,7 +5720,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                         items: [
                             {
                                 name: "文件夹图标",
-                                desc: "可保留文件夹图标（展开时显示打开状态，未展开时显示关闭状态）、显示右箭头（>）或完全隐藏。",
+                                desc: "可显示文件夹、右箭头（>）或完全隐藏。横向多列浏览保持静态图标；仅垂直树展开时切换打开状态或向下箭头。",
                                 control: {
                                     type: "dropdown",
                                     key: "folderIconStyle",

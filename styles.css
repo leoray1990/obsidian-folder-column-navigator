@@ -993,6 +993,19 @@
     background: color-mix(in srgb, var(--interactive-accent) 14%, var(--background-primary));
 }
 
+.fcn-column.is-column-move-drop-target {
+    background: color-mix(in srgb, var(--interactive-accent) 8%, var(--background-primary));
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 72%, transparent);
+}
+
+.fcn-file-item.is-item-drop-before {
+    box-shadow: inset 0 2px 0 var(--interactive-accent);
+}
+
+.fcn-file-item.is-item-drop-after {
+    box-shadow: inset 0 -2px 0 var(--interactive-accent);
+}
+
 .fcn-root-folder-draggable.is-root-folder-drop-before {
     box-shadow: inset 0 2px 0 var(--interactive-accent);
 }
@@ -1136,6 +1149,88 @@
 .fcn-file-item.is-selected,
 .fcn-file-item.is-keyboard-selected {
     box-shadow: inset 3px 0 0 var(--interactive-accent);
+}
+
+.fcn-file-item.is-multi-selected {
+    color: var(--text-normal);
+    background: color-mix(in srgb, var(--interactive-accent) 18%, var(--background-primary));
+    box-shadow: inset 3px 0 0 var(--interactive-accent);
+}
+
+.fcn-file-item.is-multi-selected.is-keyboard-selected {
+    background: color-mix(in srgb, var(--interactive-accent) 25%, var(--background-primary));
+}
+
+.fcn-batch-property-form {
+    display: grid;
+    grid-template-columns: minmax(88px, auto) minmax(0, 1fr);
+    align-items: center;
+    gap: 10px 12px;
+}
+
+.fcn-batch-property-form > label {
+    color: var(--text-muted);
+    font-size: var(--font-ui-small);
+}
+
+.fcn-batch-property-form > input,
+.fcn-batch-property-form > select {
+    width: 100%;
+}
+
+.fcn-property-shortcuts,
+.fcn-property-type-hint,
+.fcn-batch-property-form .fcn-input-validation {
+    grid-column: 2;
+}
+
+.fcn-property-shortcuts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.fcn-property-shortcuts button {
+    padding: 2px 8px;
+    font-size: var(--font-ui-smaller);
+}
+
+.fcn-property-type-hint {
+    color: var(--text-faint);
+    font-size: var(--font-ui-smaller);
+}
+
+.fcn-property-type-hint.is-error {
+    color: var(--text-error);
+}
+
+.fcn-property-summary-list {
+    max-height: min(52vh, 440px);
+    overflow-y: auto;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-s);
+}
+
+.fcn-property-summary-item {
+    display: grid;
+    grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr);
+    gap: 12px;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.fcn-property-summary-item:last-child {
+    border-bottom: 0;
+}
+
+.fcn-property-summary-path {
+    overflow-wrap: anywhere;
+    color: var(--text-normal);
+}
+
+.fcn-property-summary-value {
+    overflow-wrap: anywhere;
+    color: var(--text-muted);
 }
 
 .fcn-file-item {
