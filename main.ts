@@ -201,6 +201,7 @@ interface ItemGroup {
     label: string;
     items: TAbstractFile[];
     isArchive: boolean;
+    hasFolderNote: boolean;
 }
 
 type FilterScope =
@@ -2945,19 +2946,22 @@ class FolderColumnNavigatorView extends ItemView {
     private getItemGroups(children: TAbstractFile[]): ItemGroup[] {
         const property = this.plugin.settings.groupProperty.trim();
         if (!this.plugin.settings.groupItems || !property) {
-            return [{ key: "", label: "", items: children, isArchive: false }];
+            return [{ key: "", label: "", items: children, isArchive: false, hasFolderNote: false }];
         }
 
-        const groupValues = children.map(child => {
+        // Keep folder notes outside the regular grouping pipeline. This makes
+        // them first even when another group is pinned by the user.
+        const folderNoteItems = children.filter(child => {
             const parent = child.parent;
-            if (child instanceof TFile && parent && this.isFolderNote(child, parent)) {
-                return null;
-            }
+            return child instanceof TFile && Boolean(parent && this.isFolderNote(child, parent));
+        });
+        const groupableChildren = children.filter(child => !folderNoteItems.includes(child));
+        const groupValues = groupableChildren.map(child => {
             const values = this.getItemPropertyValues(child, property, true);
             return values.length > 0 ? values : null;
         });
         if (!groupValues.some(values => values !== null)) {
-            return [{ key: "", label: "", items: children, isArchive: false }];
+            return [{ key: "", label: "", items: children, isArchive: false, hasFolderNote: false }];
         }
 
         const archiveNames = new Set(this.plugin.settings.groupArchiveNames
@@ -2965,12 +2969,10 @@ class FolderColumnNavigatorView extends ItemView {
             .filter(Boolean));
         const grouped = new Map<string, TAbstractFile[]>();
         const archiveGroups = new Set<string>();
-        children.forEach((child, index) => {
-            const parent = child.parent;
-            const isFolderNote = child instanceof TFile && Boolean(parent && this.isFolderNote(child, parent));
+        groupableChildren.forEach((child, index) => {
             const values = groupValues[index];
-            const isArchive = !isFolderNote && values !== null && values.some(value => archiveNames.has(value.toLocaleLowerCase()));
-            const groupKey = isFolderNote ? "" : isArchive ? ARCHIVE_GROUP_KEY : values?.[0] ?? "其他";
+            const isArchive = values !== null && values.some(value => archiveNames.has(value.toLocaleLowerCase()));
+            const groupKey = isArchive ? ARCHIVE_GROUP_KEY : values?.[0] ?? "其他";
             const items = grouped.get(groupKey) ?? [];
             items.push(child);
             grouped.set(groupKey, items);
@@ -2979,12 +2981,13 @@ class FolderColumnNavigatorView extends ItemView {
             }
         });
         const pinnedGroups = new Set(this.plugin.settings.pinnedGroups);
-        return [...grouped.entries()]
+        const groups = [...grouped.entries()]
             .map(([key, items]) => ({
                 key,
                 label: key === ARCHIVE_GROUP_KEY ? "归档" : key,
                 items,
-                isArchive: archiveGroups.has(key)
+                isArchive: archiveGroups.has(key),
+                hasFolderNote: false
             }))
             .sort((a, b) => {
                 const archiveDifference = Number(a.isArchive) - Number(b.isArchive);
@@ -2998,6 +3001,19 @@ class FolderColumnNavigatorView extends ItemView {
                 const nameDifference = compareNames({ name: a.label }, { name: b.label });
                 return this.plugin.settings.groupSortDirection === "asc" ? nameDifference : -nameDifference;
             });
+        if (folderNoteItems.length === 0) {
+            return groups;
+        }
+        return [
+            {
+                key: "",
+                label: "",
+                items: folderNoteItems,
+                isArchive: false,
+                hasFolderNote: true
+            },
+            ...groups
+        ];
     }
 
     private getItemGroupStateKey(groupPath: string, groupKey: string): string {
@@ -3552,6 +3568,11 @@ class FolderColumnNavigatorView extends ItemView {
             menu.addItem(item => item.setSection("open").setTitle("打开目录").setIcon("folder-open").onClick(() => this.openFolderColumn(folder.path, columnIndex)));
         }
         menu.addItem(item => item.setSection("action-primary").setTitle("新建笔记").setIcon("file-plus").onClick(() => this.promptCreateNote(folder)));
+        menu.addItem(item => item
+            .setSection("action-primary")
+            .setTitle("创建文件夹笔记")
+            .setIcon("bookmark-plus")
+            .onClick(() => void this.createFolderNote(folder)));
         menu.addItem(item => item.setSection("action-primary").setTitle("新建子文件夹").setIcon("folder-plus").onClick(() => this.promptCreateFolder(folder)));
         menu.addItem(item => item.setSection("action-primary").setTitle("新建白板").setIcon("layout-dashboard").onClick(() => this.promptCreateCanvas(folder)));
         menu.addItem(item => item.setSection("action-primary").setTitle("新建数据库").setIcon("table-properties").onClick(() => this.promptCreateBase(folder)));
@@ -4082,6 +4103,22 @@ class FolderColumnNavigatorView extends ItemView {
         this.promptCreateFile(folder, "新建笔记", "未命名笔记.md", "创建", name => name.endsWith(".md") ? name : `${name}.md`, "");
     }
 
+    /** Create the conventional same-name folder note directly inside a folder. */
+    private async createFolderNote(folder: TFolder): Promise<void> {
+        const existingFolderNote = this.getFolderNote(folder, true);
+        if (existingFolderNote) {
+            new Notice(`当前文件夹已经存在文件夹笔记：${existingFolderNote.name}`, 3000);
+            return;
+        }
+        const path = joinVaultPath(folder, `${folder.name}.md`);
+        if (this.plugin.app.vault.getAbstractFileByPath(path)) {
+            new Notice("同名文件或目录已存在。", 3000);
+            return;
+        }
+        const file = await this.plugin.app.vault.create(path, "");
+        await this.openFile(file);
+    }
+
     private promptCreateFolder(folder: TFolder): void {
         new TextInputModal(this.plugin.app, "新建子文件夹", "输入文件夹名称", "未命名文件夹", "创建", async name => {
             const path = joinVaultPath(folder, name);
@@ -4272,6 +4309,12 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private compareItems(a: TAbstractFile, b: TAbstractFile, parent: TFolder): number {
+        // Folder notes always stay at the top, regardless of the active sort
+        // mode, including manually persisted custom ordering.
+        const folderNoteDifference = Number(this.isFolderNote(b, parent)) - Number(this.isFolderNote(a, parent));
+        if (folderNoteDifference !== 0) {
+            return folderNoteDifference;
+        }
         if (this.plugin.settings.sortField === "custom") {
             const order = new Map(this.plugin.getCustomItemOrder(parent.path).map((path, index) => [path, index]));
             const aIndex = order.get(a.path);
@@ -4279,10 +4322,6 @@ class FolderColumnNavigatorView extends ItemView {
             if (aIndex !== undefined || bIndex !== undefined) {
                 return (aIndex ?? Number.MAX_SAFE_INTEGER) - (bIndex ?? Number.MAX_SAFE_INTEGER);
             }
-        }
-        const folderNoteDifference = Number(this.isFolderNote(b, parent)) - Number(this.isFolderNote(a, parent));
-        if (folderNoteDifference !== 0) {
-            return folderNoteDifference;
         }
         const folderDifference = Number(b instanceof TFolder) - Number(a instanceof TFolder);
         if (folderDifference !== 0) {

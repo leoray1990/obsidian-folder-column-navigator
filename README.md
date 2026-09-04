@@ -155,6 +155,7 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 - 隐藏文件扩展名；不会影响右侧可单独关闭的类型缩写。
 - 目录与文件名称左对齐。
 - 文件夹笔记优先显示：当目录内存在与目录同名的文件时，将其识别为文件夹笔记，置顶并显示书签图标。
+- 文件夹右键菜单可直接创建与文件夹同名的 Markdown 文件夹笔记；已有文件夹笔记时会提示，避免重复创建。
 
 ### 底部日历与日期文件
 
@@ -285,6 +286,7 @@ Folder Column Navigator adds a Finder-style multi-column navigator to Obsidian. 
 - Name, modified-time, and created-time sorting in ascending or descending order.
 - Optional property-based grouping; configurable archive values are shown as a collapsed “归档” group at the bottom.
 - Configurable item metadata, icons with open/closed folder states, font sizes, folder-note priority, extension visibility, and Glob-based hiding.
+- Create a same-name Markdown folder note from any folder's context menu, with duplicate detection.
 - Optional hover previews for files and folder notes, with a configurable delay.
 - Filterable context menus for files and folders.
 - Immediate duplicate-name validation when creating or renaming files and folders.
