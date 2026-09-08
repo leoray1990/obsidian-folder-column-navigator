@@ -134,6 +134,7 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 - 在一级目录之间切换后，会记住该目录上次展开到的列和焦点位置。
 - 移动文件或目录后，会自动定位并展开目标目录，保留键盘焦点以便继续操作。
 - 文件或目录也可直接拖到目标目录；悬停约半秒会自动选中并展开该目录，再松开完成移动。
+- 开启分组后，可将文件或目录拖到“归档”分组；松开后会为文件或文件夹笔记增加归档值。拖到其他分组则更新当前分组值。
 - 文件或目录可拖到其他文件列的空白处，直接移动到该列对应目录。
 - 同目录内可使用 `Shift` 连选、`Cmd`/ `Ctrl` 增减选择；多选项目可一起拖拽移动。
 
@@ -156,6 +157,10 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 - 目录与文件名称左对齐。
 - 文件夹笔记优先显示：当目录内存在与目录同名的文件时，将其识别为文件夹笔记，置顶并显示书签图标。
 - 文件夹右键菜单可直接创建与文件夹同名的 Markdown 文件夹笔记；已有文件夹笔记时会提示，避免重复创建。
+
+### 主题
+
+插件内置三套视觉主题：简洁分格（默认）、彩色风格和手帐风格。可在插件的“设置 → 显示 → 主题”中立即切换。彩色风格会按目录路径稳定分配彩虹识别色，并同步用于顶部标签、目录列、分组和日历；手帐风格使用纸张、贴纸和手帐卡片的视觉语言，覆盖文件树、操作按钮、右键菜单和日历。安装并启用可选的 **Style Settings** 插件后，仍可从它的 **Folder Column Navigator → 主题风格** 切换主题。
 
 ### 底部日历与日期文件
 
@@ -251,7 +256,10 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 | 隐藏规则 | 按 Glob 规则隐藏文件和目录 |
 | 文件列最小/最大宽度 | 限制拖拽文件列时的宽度范围 |
 | 文件夹图标 / 文件图标 | 分别控制文件夹、文件的图标样式；垂直展开时文件夹图标会显示打开/关闭状态 |
-| 分组 | 按指定属性分组；支持逗号分隔值或 YAML 数组，普通多值只取第一个；只要任一值命中归档名称就归入底部“归档”分组，没有任何有效分组信息时不显示分组标题，缺少属性的条目归入“其他” |
+| 分组 | 按指定属性分组；支持逗号分隔值或 YAML 数组，普通多值只取第一个；只要任一值命中归档名称就归入底部“归档”分组，没有任何有效分组信息时不显示分组标题，缺少属性的条目归入“其他”；“其他”固定排在普通分组之后、归档之前 |
+| 主题风格 | 在“显示 → 主题”中切换简洁分格、彩色风格和手帐风格；兼容 Style Settings |
+| 右键菜单背景不透明度 | 调整插件右键菜单的背景不透明度，范围 40%–100%，默认 70% |
+| 悬浮预览背景不透明度 | 调整文件和文件夹笔记预览窗口的背景不透明度，范围 40%–100%，默认 70% |
 | 启用悬浮预览 | 开关文件和目录的悬浮预览 |
 | 悬浮预览文件夹笔记 | 控制鼠标悬停目录时是否预览对应的文件夹笔记 |
 | 悬浮预览延迟 | 配置鼠标悬停后显示预览的延迟，范围 350ms–2s，默认 500ms |
@@ -285,7 +293,9 @@ Folder Column Navigator adds a Finder-style multi-column navigator to Obsidian. 
 - Drag files or folders onto a destination folder; hovering for about half a second reveals and expands it before drop.
 - Name, modified-time, and created-time sorting in ascending or descending order.
 - Optional property-based grouping; configurable archive values are shown as a collapsed “归档” group at the bottom.
+- Dragging a file or folder onto “归档” adds the archive marker to its grouping property; dragging it onto another group updates the active group.
 - Configurable item metadata, icons with open/closed folder states, font sizes, folder-note priority, extension visibility, and Glob-based hiding.
+- Three built-in visual themes—Simple grid, Colorful, and Hand-account—are available in Settings → Display → Theme, with Style Settings retained as an optional alternative entry point. Colorful keeps a stable rainbow accent for each directory across navigation and columns; Hand-account uses a paper-and-sticker journal treatment across lists, menus, controls, groups, and the calendar.
 - Create a same-name Markdown folder note from any folder's context menu, with duplicate detection.
 - Optional hover previews for files and folder notes, with a configurable delay.
 - Filterable context menus for files and folders.

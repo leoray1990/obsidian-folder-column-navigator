@@ -1,7 +1,47 @@
+/* @settings
+
+name: Folder Column Navigator
+id: folder-column-navigator-style-settings
+settings:
+  -
+    id: fcn-theme
+    title: 主题风格
+    title.zh: 主题风格
+    description: 选择目录文件列表的内置视觉主题。
+    description.zh: 选择目录文件列表的内置视觉主题。
+    type: class-select
+    allowEmpty: false
+    default: fcn-theme-simple
+    options:
+      -
+        label: 简洁分格
+        label.zh: 简洁分格
+        value: fcn-theme-simple
+      -
+        label: 彩色风格
+        label.zh: 彩色风格
+        value: fcn-theme-colorful
+      -
+        label: 手帐风格
+        label.zh: 手帐风格
+        value: fcn-theme-cartoon
+*/
+
 .folder-column-navigator-view {
     --fcn-divider: var(--background-modifier-border);
+    --fcn-divider-strong: var(--background-modifier-border-hover);
     --fcn-hover: var(--background-modifier-hover);
     --fcn-selected: var(--nav-item-background-active);
+    --fcn-surface: var(--background-primary);
+    --fcn-surface-muted: var(--background-secondary);
+    --fcn-surface-alt: var(--background-secondary-alt);
+    --fcn-header-bg: transparent;
+    --fcn-group-bg: var(--background-primary);
+    --fcn-row-radius: 0;
+    --fcn-tag-radius: 6px;
+    --fcn-group-radius: 0;
+    --fcn-focus-ring: var(--background-modifier-border-focus);
+    --fcn-row-hover-shadow: none;
     padding: 0;
     overflow: hidden;
 }
@@ -34,7 +74,7 @@
     box-sizing: border-box;
     height: 100%;
     min-height: 0;
-    background: var(--background-primary);
+    background: var(--fcn-surface);
 }
 
 .fcn-top-root-folder-pane {
@@ -43,7 +83,7 @@
     min-height: 0;
     overflow: hidden;
     border-bottom: 1px solid var(--fcn-divider);
-    background: var(--background-secondary);
+    background: var(--fcn-surface-muted);
 }
 
 .fcn-top-root-folder-pane.is-visible {
@@ -64,7 +104,7 @@
     width: 100%;
     box-sizing: border-box;
     border-top: 1px solid var(--fcn-divider);
-    background: var(--background-secondary);
+    background: var(--fcn-surface-muted);
 }
 
 .fcn-calendar-pane.is-hidden-by-presentation {
@@ -79,7 +119,7 @@
     box-sizing: border-box;
     padding: 0 12px;
     border-bottom: 1px solid var(--background-modifier-border);
-    background: var(--background-secondary);
+    background: var(--fcn-surface-muted);
 }
 
 .fcn-calendar-toggle {
@@ -90,7 +130,7 @@
     margin: 0;
     padding: 7px 0;
     color: var(--text-muted);
-    background: var(--background-secondary);
+    background: var(--fcn-surface-muted);
     border: 0;
     border-radius: var(--radius-s);
     box-shadow: none;
@@ -642,12 +682,12 @@
 
 .fcn-navigation-pane {
     overflow: hidden;
-    background: var(--background-secondary);
+    background: var(--fcn-surface-muted);
 }
 
 .fcn-content-pane {
     overflow: hidden;
-    background: var(--background-primary);
+    background: var(--fcn-surface);
 }
 
 .fcn-resize-divider {
@@ -655,7 +695,7 @@
     z-index: 2;
     width: 5px;
     cursor: col-resize;
-    background: var(--background-secondary);
+    background: var(--fcn-surface-muted);
     border-left: 0;
     border-right: 1px solid var(--fcn-divider);
     touch-action: none;
@@ -686,6 +726,7 @@
     gap: 6px;
     padding: 6px 8px;
     border-bottom: 1px solid var(--fcn-divider);
+    background: var(--fcn-header-bg);
     color: var(--text-muted);
     font-size: var(--font-ui-small);
     font-weight: var(--font-semibold);
@@ -768,15 +809,18 @@
     display: flex;
     flex: 0 0 auto;
     align-items: center;
-    gap: 0;
+    gap: 5px;
 }
 
 .fcn-sort-select {
+    box-sizing: border-box;
     max-width: none;
     min-width: 0;
     height: 22px;
-    padding: 2px 0;
-    margin-right: -2px;
+    /* The select may receive a themed outline. Keep its right-aligned label
+     * clear of that outline in every theme, especially hand-account. */
+    padding: 2px 9px 2px 8px;
+    margin-right: 0;
     color: var(--text-muted);
     background: transparent;
     border: 0;
@@ -912,7 +956,7 @@
     align-items: center;
     gap: 4px;
     box-sizing: border-box;
-    max-height: calc(var(--fcn-visible-root-rows) * 34px + 6px);
+    max-height: var(--fcn-root-folder-collapsed-height, calc(var(--fcn-visible-root-rows) * 34px + 6px));
     overflow: hidden;
     padding: 3px;
     transition: max-height 120ms ease;
@@ -932,7 +976,7 @@
     box-sizing: border-box;
     padding: 4px 8px;
     border: 0;
-    border-radius: 6px;
+    border-radius: var(--fcn-tag-radius);
     background: transparent;
     color: var(--text-muted);
     font-weight: 400;
@@ -1082,12 +1126,13 @@
     gap: 7px;
     min-height: 30px;
     box-sizing: border-box;
-    border-radius: var(--radius-s);
+    border-radius: var(--fcn-row-radius);
     padding: 4px 7px;
     color: var(--text-normal);
     cursor: pointer;
     outline: none;
     user-select: none;
+    transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
 }
 
 .fcn-file-item.fcn-vertical-tree-item {
@@ -1097,6 +1142,7 @@
 .fcn-navigation-item:hover,
 .fcn-file-item:hover {
     background: var(--fcn-hover);
+    box-shadow: var(--fcn-row-hover-shadow);
 }
 
 .fcn-navigation-item.is-filtered-out {
@@ -1109,7 +1155,7 @@
 .fcn-sort-direction:focus-visible,
 .fcn-icon-button:focus-visible,
 .fcn-filter-badge:focus-visible {
-    box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+    box-shadow: 0 0 0 2px var(--fcn-focus-ring);
 }
 
 .fcn-navigation-item.is-selected,
@@ -1236,7 +1282,7 @@
 .fcn-file-item {
     min-height: 34px;
     border-bottom: 1px solid var(--background-modifier-border-hover);
-    border-radius: 0;
+    border-radius: var(--fcn-row-radius);
 }
 
 .fcn-item-icon {
@@ -1264,8 +1310,9 @@
     box-sizing: border-box;
     padding: 8px 7px 4px;
     color: var(--text-muted);
-    background: var(--background-primary);
+    background: var(--fcn-group-bg);
     border-bottom: 1px solid var(--fcn-divider);
+    border-radius: var(--fcn-group-radius);
     cursor: default;
     font-size: var(--font-ui-smaller);
     font-weight: var(--font-semibold);
@@ -1274,6 +1321,12 @@
 
 .fcn-item-group-header.is-expandable {
     cursor: pointer;
+}
+
+.fcn-item-group-header.is-group-drop-target {
+    color: var(--text-normal);
+    background: color-mix(in srgb, var(--interactive-accent) 16%, var(--background-primary));
+    box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--interactive-accent) 72%, transparent);
 }
 
 .fcn-item-group-toggle {
@@ -1319,8 +1372,10 @@
     overflow: auto;
     padding: 14px 16px;
     color: var(--text-normal);
-    background: var(--background-primary);
+    background-color: color-mix(in srgb, var(--background-primary) var(--fcn-hover-preview-opacity, 70%), transparent);
     border-radius: var(--radius-m);
+    backdrop-filter: blur(20px) saturate(1.06);
+    -webkit-backdrop-filter: blur(20px) saturate(1.06);
 }
 
 .fcn-hover-preview-content .markdown-preview-view {
@@ -1332,6 +1387,15 @@
     color: var(--text-muted);
     font-size: var(--font-ui-smaller);
     pointer-events: none;
+}
+
+/* Menus are rendered in a document-level portal rather than inside the view.
+ * The configurable glass opacity changes only their background layer, never
+ * the content, so controls remain readable against busy columns. */
+.menu.fcn-context-menu {
+    background-color: color-mix(in srgb, var(--background-primary) var(--fcn-context-menu-opacity, 70%), transparent);
+    backdrop-filter: blur(20px) saturate(1.08);
+    -webkit-backdrop-filter: blur(20px) saturate(1.08);
 }
 
 .menu-item.fcn-context-menu-filtered-out,
@@ -1453,8 +1517,12 @@
     margin-top: 3px;
 }
 
-.fcn-wrap-item-names .fcn-root-folder-grid {
-    max-height: calc(var(--fcn-visible-root-rows) * 58px + 6px);
+.fcn-wrap-item-names .fcn-root-folder-grid:not(.is-expanded) {
+    max-height: var(--fcn-root-folder-collapsed-height, calc(var(--fcn-visible-root-rows) * 58px + 6px));
+}
+
+.fcn-wrap-item-names .fcn-root-folder-grid.is-expanded {
+    max-height: 2000px;
 }
 
 .fcn-wrap-item-names .fcn-root-folder-item {
@@ -1507,5 +1575,440 @@
 
     .fcn-file-item.fcn-vertical-tree-item {
         padding-left: calc(5px + var(--fcn-tree-indent, 0px));
+    }
+}
+
+/*
+ * Built-in themes
+ *
+ * Style Settings applies the selected fcn-theme-* class to the document body.
+ * Every theme is scoped to this view and uses the same selection geometry,
+ * column widths, and keyboard focus treatment. Visual preference never
+ * changes the Finder-style browsing behaviour.
+ */
+
+body.fcn-theme-simple .folder-column-navigator-view {
+    --fcn-divider: var(--background-modifier-border);
+    --fcn-divider-strong: var(--background-modifier-border-hover);
+    --fcn-hover: var(--background-modifier-hover);
+    --fcn-selected: var(--nav-item-background-active);
+    --fcn-surface: var(--background-primary);
+    --fcn-surface-muted: var(--background-secondary);
+    --fcn-surface-alt: var(--background-secondary-alt);
+    --fcn-header-bg: color-mix(in srgb, var(--background-secondary) 58%, var(--background-primary));
+    --fcn-group-bg: transparent;
+    --fcn-row-radius: 0;
+    --fcn-tag-radius: 5px;
+    --fcn-group-radius: 0;
+    --fcn-focus-ring: var(--background-modifier-border-focus);
+}
+
+body.fcn-theme-simple .fcn-root-folder-item {
+    background: color-mix(in srgb, var(--background-secondary-alt) 62%, var(--background-primary));
+    border: 1px solid transparent;
+}
+
+body.fcn-theme-simple .fcn-root-folder-item:hover {
+    border-color: var(--fcn-divider);
+}
+
+body.fcn-theme-simple .fcn-root-folder-item.is-selected {
+    background: var(--interactive-accent);
+    border-color: var(--interactive-accent);
+    color: var(--text-on-accent);
+}
+
+body.fcn-theme-simple .fcn-item-group-header {
+    color: var(--text-faint);
+    border-bottom-color: var(--fcn-divider-strong);
+}
+
+/* Colorful: every directory receives a stable colour from its path. That
+ * colour is reused in top tags, navigation, column headers and folder rows,
+ * so it remains an orientation aid instead of decoration that moves on sort. */
+body.fcn-theme-colorful .folder-column-navigator-view {
+    --fcn-divider: color-mix(in srgb, var(--interactive-accent) 16%, var(--background-modifier-border));
+    --fcn-divider-strong: color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border-hover));
+    --fcn-hover: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-modifier-hover));
+    --fcn-selected: color-mix(in srgb, var(--interactive-accent) 17%, var(--background-primary));
+    --fcn-surface: color-mix(in srgb, var(--background-primary) 98%, #38bdf8);
+    --fcn-surface-muted: color-mix(in srgb, var(--background-secondary) 95%, #a78bfa);
+    --fcn-surface-alt: color-mix(in srgb, var(--background-secondary-alt) 91%, #38bdf8);
+    --fcn-header-bg: linear-gradient(90deg, color-mix(in srgb, var(--interactive-accent) 8%, var(--background-secondary)), transparent 72%);
+    --fcn-group-bg: color-mix(in srgb, var(--background-primary) 96%, var(--interactive-accent));
+    --fcn-row-radius: 6px;
+    --fcn-tag-radius: 8px;
+    --fcn-group-radius: 6px;
+    --fcn-focus-ring: color-mix(in srgb, var(--interactive-accent) 78%, transparent);
+    --fcn-rainbow: var(--interactive-accent);
+}
+
+body.fcn-theme-colorful [data-fcn-rainbow="0"] { --fcn-rainbow: #f97316; }
+body.fcn-theme-colorful [data-fcn-rainbow="1"] { --fcn-rainbow: #eab308; }
+body.fcn-theme-colorful [data-fcn-rainbow="2"] { --fcn-rainbow: #22c55e; }
+body.fcn-theme-colorful [data-fcn-rainbow="3"] { --fcn-rainbow: #06b6d4; }
+body.fcn-theme-colorful [data-fcn-rainbow="4"] { --fcn-rainbow: #3b82f6; }
+body.fcn-theme-colorful [data-fcn-rainbow="5"] { --fcn-rainbow: #8b5cf6; }
+body.fcn-theme-colorful [data-fcn-rainbow="6"] { --fcn-rainbow: #ec4899; }
+
+body.fcn-theme-colorful .fcn-layout,
+body.fcn-theme-colorful .fcn-content-pane,
+body.fcn-theme-colorful .fcn-calendar-content {
+    background: var(--fcn-surface);
+}
+
+body.fcn-theme-colorful .fcn-top-root-folder-pane,
+body.fcn-theme-colorful .fcn-navigation-pane,
+body.fcn-theme-colorful .fcn-calendar-pane,
+body.fcn-theme-colorful .fcn-calendar-header,
+body.fcn-theme-colorful .fcn-calendar-toggle {
+    background: var(--fcn-surface-muted);
+}
+
+body.fcn-theme-colorful .fcn-root-folder-item[data-fcn-rainbow],
+body.fcn-theme-colorful .fcn-root-folder-list-item[data-fcn-rainbow] {
+    background: color-mix(in srgb, var(--fcn-rainbow) 11%, var(--background-primary));
+    border: 1px solid color-mix(in srgb, var(--fcn-rainbow) 35%, var(--background-modifier-border));
+    box-shadow: inset 0 -3px 0 var(--fcn-rainbow);
+}
+
+body.fcn-theme-colorful .fcn-root-folder-item:hover,
+body.fcn-theme-colorful .fcn-root-folder-list-item:hover {
+    background: color-mix(in srgb, var(--fcn-rainbow) 18%, var(--background-primary));
+}
+
+body.fcn-theme-colorful .fcn-root-folder-item.is-selected,
+body.fcn-theme-colorful .fcn-root-folder-list-item.is-selected {
+    background: color-mix(in srgb, var(--fcn-rainbow) 31%, var(--background-primary));
+    border-color: color-mix(in srgb, var(--fcn-rainbow) 72%, var(--background-modifier-border));
+    box-shadow: inset 0 -4px 0 var(--fcn-rainbow);
+    color: var(--text-normal);
+    font-weight: var(--font-semibold);
+}
+
+body.fcn-theme-colorful .fcn-root-folder-item.is-keyboard-selected:not(.is-selected),
+body.fcn-theme-colorful .fcn-root-folder-list-item.is-keyboard-selected:not(.is-selected) {
+    background: color-mix(in srgb, var(--fcn-rainbow) 19%, var(--background-primary));
+    box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--fcn-rainbow) 78%, transparent),
+        inset 0 0 0 1px color-mix(in srgb, var(--fcn-rainbow) 56%, transparent);
+}
+
+body.fcn-theme-colorful .fcn-navigation-item.is-selected:not(.fcn-root-folder-item),
+body.fcn-theme-colorful .fcn-navigation-item.is-keyboard-selected:not(.fcn-root-folder-item),
+body.fcn-theme-colorful .fcn-file-item.is-selected,
+body.fcn-theme-colorful .fcn-file-item.is-keyboard-selected {
+    background: var(--fcn-selected);
+}
+
+body.fcn-theme-colorful .fcn-file-item[data-fcn-kind="folder"][data-fcn-rainbow] {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--fcn-rainbow) 10%, transparent), transparent 72%);
+    box-shadow: inset 3px 0 0 var(--fcn-rainbow);
+}
+
+body.fcn-theme-colorful .fcn-file-item[data-fcn-kind="folder"][data-fcn-rainbow]:hover,
+body.fcn-theme-colorful .fcn-file-item[data-fcn-kind="folder"][data-fcn-rainbow].is-keyboard-selected {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--fcn-rainbow) 18%, var(--background-primary)), var(--fcn-hover) 82%);
+}
+
+body.fcn-theme-colorful .fcn-file-item[data-fcn-kind="folder"][data-fcn-rainbow].is-selected {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--fcn-rainbow) 26%, var(--background-primary)), var(--fcn-selected) 82%);
+    box-shadow: inset 4px 0 0 var(--fcn-rainbow);
+}
+
+body.fcn-theme-colorful .fcn-column[data-fcn-rainbow] .fcn-column-header {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--fcn-rainbow) 12%, var(--fcn-surface)), var(--fcn-header-bg) 68%);
+    box-shadow: inset 0 3px 0 var(--fcn-rainbow);
+}
+
+body.fcn-theme-colorful .fcn-item-group-header[data-fcn-rainbow] {
+    color: var(--text-normal);
+    background: color-mix(in srgb, var(--fcn-rainbow) 11%, var(--fcn-group-bg));
+    box-shadow: inset 3px 0 0 var(--fcn-rainbow);
+}
+
+body.fcn-theme-colorful .fcn-calendar-title,
+body.fcn-theme-colorful .fcn-calendar-mode-switcher,
+body.fcn-theme-colorful .fcn-sort-select,
+body.fcn-theme-colorful .fcn-sort-direction,
+body.fcn-theme-colorful .fcn-icon-button,
+body.fcn-theme-colorful .fcn-calendar-toggle {
+    background: var(--fcn-surface-alt);
+    border: 1px solid color-mix(in srgb, var(--interactive-accent) 22%, var(--fcn-divider));
+    border-radius: 8px;
+}
+
+body.fcn-theme-colorful :is(.fcn-icon-button, .fcn-sort-direction, .fcn-calendar-toolbar-button, .fcn-calendar-mode-button):hover {
+    background: color-mix(in srgb, var(--interactive-accent) 14%, var(--fcn-surface-alt));
+}
+
+body.fcn-theme-colorful .fcn-context-menu {
+    /* This menu is portalled outside .folder-column-navigator-view, so it
+     * cannot inherit the view's --fcn-surface or divider variables. */
+    background-color: color-mix(
+        in srgb,
+        color-mix(in srgb, var(--background-primary) 91%, #dbeafe) var(--fcn-context-menu-opacity, 70%),
+        transparent
+    );
+    border: 1px solid color-mix(in srgb, var(--interactive-accent) 29%, var(--background-modifier-border-hover));
+    border-radius: 10px;
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--interactive-accent) 16%, transparent),
+        inset 3px 0 0 #f97316;
+}
+
+body.fcn-theme-colorful .fcn-context-menu .menu-item {
+    margin: 2px 4px;
+    border-radius: 6px;
+}
+
+body.fcn-theme-colorful .fcn-context-menu .menu-item:is(:hover, .fcn-context-menu-active) {
+    background: color-mix(in srgb, var(--interactive-accent) 15%, var(--background-secondary-alt));
+}
+
+body.fcn-theme-colorful .fcn-context-menu .fcn-context-menu-filter {
+    color: var(--interactive-accent);
+}
+
+body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-mon { --fcn-calendar-rainbow: #f97316; }
+body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-tue { --fcn-calendar-rainbow: #eab308; }
+body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-wed { --fcn-calendar-rainbow: #22c55e; }
+body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-thu { --fcn-calendar-rainbow: #06b6d4; }
+body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-fri { --fcn-calendar-rainbow: #3b82f6; }
+body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-sat { --fcn-calendar-rainbow: #8b5cf6; }
+body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-sun { --fcn-calendar-rainbow: #ec4899; }
+
+body.fcn-theme-colorful .fcn-calendar-content .fc .fcn-calendar-date-available .fc-daygrid-day-number {
+    color: var(--text-normal);
+    background: color-mix(in srgb, var(--fcn-calendar-rainbow) 17%, var(--background-primary));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fcn-calendar-rainbow) 48%, transparent);
+}
+
+body.fcn-theme-colorful .fcn-calendar-content .fc .fcn-calendar-date-multiple .fc-daygrid-day-number {
+    color: var(--text-normal);
+    background: color-mix(in srgb, var(--fcn-calendar-rainbow) 31%, var(--background-primary));
+    box-shadow: inset 0 0 0 2px var(--fcn-calendar-rainbow);
+}
+
+body.fcn-theme-colorful .fcn-calendar-content .fc .fcn-calendar-date-selected .fc-daygrid-day-number {
+    color: var(--text-normal);
+    background: color-mix(in srgb, var(--fcn-calendar-rainbow) 43%, var(--background-primary));
+    box-shadow: inset 0 0 0 3px var(--fcn-calendar-rainbow);
+}
+
+/* Hand-account: a paper notebook treatment. The paper grain, sticker-like controls
+ * and irregular-but-static corners make it playful without changing row
+ * geometry when a pointer or keyboard selection moves through the list. */
+body.fcn-theme-cartoon .folder-column-navigator-view {
+    --fcn-cartoon-ink: #735b78;
+    --fcn-cartoon-lilac: #9a78e6;
+    --fcn-cartoon-sky: #61a7dc;
+    --fcn-cartoon-mint: #55b991;
+    --fcn-cartoon-peach: #e9897d;
+    --fcn-cartoon-lemon: #d7a63a;
+    --fcn-divider: color-mix(in srgb, var(--fcn-cartoon-lilac) 27%, var(--background-modifier-border));
+    --fcn-divider-strong: color-mix(in srgb, var(--fcn-cartoon-lilac) 43%, var(--background-modifier-border-hover));
+    --fcn-hover: color-mix(in srgb, var(--fcn-cartoon-sky) 16%, var(--background-modifier-hover));
+    --fcn-selected: color-mix(in srgb, var(--fcn-cartoon-lilac) 25%, var(--background-primary));
+    --fcn-surface: color-mix(in srgb, var(--background-primary) 95%, #fdf0c4);
+    --fcn-surface-muted: color-mix(in srgb, var(--background-secondary) 88%, #f9dce7);
+    --fcn-surface-alt: color-mix(in srgb, var(--background-secondary-alt) 80%, #e5dafc);
+    --fcn-header-bg: linear-gradient(90deg, color-mix(in srgb, #fbe1e8 52%, var(--background-secondary)), color-mix(in srgb, #d9eafb 35%, var(--background-secondary)));
+    --fcn-group-bg: color-mix(in srgb, var(--background-primary) 83%, #f7df91);
+    --fcn-row-radius: 8px 11px 8px 10px;
+    --fcn-tag-radius: 9px 13px 8px 12px;
+    --fcn-group-radius: 7px 12px 8px 11px;
+    --fcn-focus-ring: color-mix(in srgb, var(--fcn-cartoon-lilac) 88%, transparent);
+    --fcn-row-hover-shadow: 1px 2px 0 color-mix(in srgb, var(--fcn-cartoon-lilac) 26%, transparent);
+}
+
+body.fcn-theme-cartoon .fcn-layout,
+body.fcn-theme-cartoon .fcn-content-pane,
+body.fcn-theme-cartoon .fcn-calendar-content {
+    background-color: var(--fcn-surface);
+    background-image: linear-gradient(to bottom, transparent 25px, color-mix(in srgb, var(--fcn-cartoon-sky) 12%, transparent) 26px);
+    background-size: 100% 26px;
+}
+
+body.fcn-theme-cartoon .fcn-top-root-folder-pane,
+body.fcn-theme-cartoon .fcn-navigation-pane,
+body.fcn-theme-cartoon .fcn-calendar-pane,
+body.fcn-theme-cartoon .fcn-calendar-header,
+body.fcn-theme-cartoon .fcn-calendar-toggle {
+    background-color: var(--fcn-surface-muted);
+    background-image: radial-gradient(color-mix(in srgb, var(--fcn-cartoon-lilac) 14%, transparent) 0.7px, transparent 0.8px);
+    background-size: 8px 8px;
+}
+
+body.fcn-theme-cartoon .fcn-navigation-list,
+body.fcn-theme-cartoon .fcn-column-list {
+    padding: 7px;
+}
+
+body.fcn-theme-cartoon .fcn-navigation-item,
+body.fcn-theme-cartoon .fcn-file-item {
+    margin: 2px 0;
+    border: 1px dashed transparent;
+    border-bottom-color: transparent;
+}
+
+body.fcn-theme-cartoon .fcn-navigation-item:hover,
+body.fcn-theme-cartoon .fcn-file-item:hover {
+    border-color: color-mix(in srgb, var(--fcn-cartoon-sky) 61%, var(--fcn-divider));
+}
+
+body.fcn-theme-cartoon .fcn-navigation-item.is-selected,
+body.fcn-theme-cartoon .fcn-navigation-item.is-keyboard-selected,
+body.fcn-theme-cartoon .fcn-file-item.is-selected,
+body.fcn-theme-cartoon .fcn-file-item.is-keyboard-selected {
+    background: var(--fcn-selected);
+    box-shadow: inset 3px 0 0 var(--fcn-cartoon-lilac), 0 2px 7px color-mix(in srgb, var(--fcn-cartoon-lilac) 12%, transparent);
+}
+
+body.fcn-theme-cartoon .fcn-root-folder-item {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--fcn-cartoon-lilac) 15%, var(--background-primary)), color-mix(in srgb, var(--fcn-cartoon-sky) 7%, var(--background-primary)));
+    border: 1px dashed color-mix(in srgb, var(--fcn-cartoon-lilac) 55%, var(--background-modifier-border));
+    box-shadow: 1px 2px 0 color-mix(in srgb, var(--fcn-cartoon-lilac) 31%, transparent);
+}
+
+body.fcn-theme-cartoon .fcn-root-folder-item:nth-child(3n + 2) {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--fcn-cartoon-mint) 15%, var(--background-primary)), color-mix(in srgb, var(--fcn-cartoon-sky) 7%, var(--background-primary)));
+    border-color: color-mix(in srgb, var(--fcn-cartoon-mint) 58%, var(--background-modifier-border));
+}
+
+body.fcn-theme-cartoon .fcn-root-folder-item:nth-child(3n) {
+    background: linear-gradient(135deg, color-mix(in srgb, var(--fcn-cartoon-peach) 16%, var(--background-primary)), color-mix(in srgb, var(--fcn-cartoon-lemon) 8%, var(--background-primary)));
+    border-color: color-mix(in srgb, var(--fcn-cartoon-peach) 57%, var(--background-modifier-border));
+}
+
+body.fcn-theme-cartoon .fcn-root-folder-item:hover {
+    background: color-mix(in srgb, var(--fcn-cartoon-sky) 16%, var(--background-primary));
+}
+
+body.fcn-theme-cartoon .fcn-root-folder-item.is-selected {
+    background: color-mix(in srgb, var(--fcn-cartoon-lilac) 58%, var(--background-primary));
+    border-color: var(--fcn-cartoon-lilac);
+    box-shadow: 2px 3px 0 color-mix(in srgb, var(--fcn-cartoon-lilac) 38%, transparent);
+    color: var(--text-on-accent);
+}
+
+body.fcn-theme-cartoon .fcn-item-group-header {
+    margin: 4px 0 2px;
+    padding: 7px 9px 5px;
+    background: linear-gradient(135deg, var(--fcn-group-bg), color-mix(in srgb, var(--fcn-cartoon-lemon) 12%, var(--fcn-group-bg)));
+    border: 1px dashed color-mix(in srgb, var(--fcn-cartoon-lemon) 56%, var(--fcn-divider));
+    box-shadow: 1px 2px 0 color-mix(in srgb, var(--fcn-cartoon-lemon) 23%, transparent);
+}
+
+body.fcn-theme-cartoon .fcn-calendar-title,
+body.fcn-theme-cartoon .fcn-calendar-mode-switcher,
+body.fcn-theme-cartoon .fcn-calendar-year-month {
+    border: 1px dashed color-mix(in srgb, var(--fcn-cartoon-lilac) 45%, var(--fcn-divider));
+    border-radius: 8px 11px 8px 10px;
+    background: var(--fcn-surface-alt);
+}
+
+body.fcn-theme-cartoon :is(.fcn-icon-button, .fcn-sort-direction, .fcn-sort-select, .fcn-calendar-toggle, .fcn-calendar-toolbar-button, .fcn-calendar-mode-button) {
+    border: 1px dashed color-mix(in srgb, var(--fcn-cartoon-lilac) 46%, var(--fcn-divider));
+    border-radius: 8px 11px 8px 10px;
+    background: color-mix(in srgb, var(--fcn-surface-alt) 87%, var(--background-primary));
+    box-shadow: 1px 1px 0 color-mix(in srgb, var(--fcn-cartoon-lilac) 20%, transparent);
+}
+
+body.fcn-theme-cartoon :is(.fcn-icon-button, .fcn-sort-direction, .fcn-calendar-toolbar-button, .fcn-calendar-mode-button):hover {
+    background: color-mix(in srgb, var(--fcn-cartoon-sky) 19%, var(--fcn-surface-alt));
+}
+
+body.fcn-theme-cartoon .fcn-calendar-mode-button.is-active {
+    background: color-mix(in srgb, var(--fcn-cartoon-lilac) 75%, var(--background-primary));
+    box-shadow: inset 0 1px 0 color-mix(in srgb, #fff 48%, transparent), 1px 2px 0 color-mix(in srgb, var(--fcn-cartoon-lilac) 31%, transparent);
+}
+
+body.fcn-theme-cartoon .fcn-calendar-results {
+    border-top-style: dashed;
+}
+
+body.fcn-theme-cartoon .fcn-calendar-results-item {
+    margin: 2px 0;
+    border: 1px dashed transparent;
+    border-radius: var(--fcn-row-radius);
+    background: color-mix(in srgb, var(--fcn-surface) 93%, #fff);
+}
+
+body.fcn-theme-cartoon .fcn-calendar-results-item:hover,
+body.fcn-theme-cartoon .fcn-calendar-results-item:focus-visible {
+    border-color: color-mix(in srgb, var(--fcn-cartoon-sky) 58%, var(--fcn-divider));
+    box-shadow: var(--fcn-row-hover-shadow);
+}
+
+body.fcn-theme-cartoon .fcn-calendar-content .fc .fc-col-header-cell {
+    color: var(--fcn-cartoon-ink);
+}
+
+body.fcn-theme-cartoon .fcn-calendar-content .fc .fcn-calendar-date-available .fc-daygrid-day-number {
+    color: var(--fcn-cartoon-ink);
+    background: color-mix(in srgb, var(--fcn-cartoon-sky) 18%, var(--background-primary));
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--fcn-cartoon-sky) 45%, transparent);
+}
+
+body.fcn-theme-cartoon .fcn-calendar-content .fc .fcn-calendar-date-multiple .fc-daygrid-day-number {
+    color: var(--text-normal);
+    background: color-mix(in srgb, var(--fcn-cartoon-lilac) 38%, var(--background-primary));
+    box-shadow: inset 0 0 0 2px var(--fcn-cartoon-lilac);
+}
+
+body.fcn-theme-cartoon .fcn-calendar-content .fc .fcn-calendar-date-selected .fc-daygrid-day-number {
+    color: var(--text-normal);
+    background: color-mix(in srgb, var(--fcn-cartoon-peach) 45%, var(--background-primary));
+    box-shadow: inset 0 0 0 3px var(--fcn-cartoon-peach), 1px 1px 0 color-mix(in srgb, var(--fcn-cartoon-peach) 25%, transparent);
+}
+
+body.fcn-theme-cartoon .menu.fcn-context-menu {
+    /* Context menus are portalled to the document body, outside the file-list
+     * container where the hand-account palette normally lives. Keep a local,
+     * near-opaque paper palette here so the menu remains readable while the
+     * shared menu treatment retains a subtle sense of depth. */
+    --fcn-cartoon-ink: #735b78;
+    --fcn-cartoon-lilac: #9a78e6;
+    --fcn-cartoon-sky: #61a7dc;
+    --fcn-cartoon-paper: color-mix(
+        in srgb,
+        color-mix(in srgb, var(--background-primary) 94%, #fff8ef) var(--fcn-context-menu-opacity, 70%),
+        transparent
+    );
+    --fcn-cartoon-paper-alt: color-mix(in srgb, var(--background-secondary-alt) 82%, #ece3ff);
+    color: var(--text-normal);
+    opacity: 1;
+    background-color: var(--fcn-cartoon-paper);
+    background-image: radial-gradient(color-mix(in srgb, var(--fcn-cartoon-lilac) 14%, transparent) 0.7px, transparent 0.8px);
+    background-size: 8px 8px;
+    border: 1px dashed color-mix(in srgb, var(--fcn-cartoon-lilac) 54%, var(--background-modifier-border));
+    border-radius: 10px 14px 9px 12px;
+    box-shadow: 3px 4px 0 color-mix(in srgb, var(--fcn-cartoon-lilac) 22%, transparent),
+        0 10px 24px color-mix(in srgb, #42314b 18%, transparent);
+}
+
+body.fcn-theme-cartoon .menu.fcn-context-menu .menu-item {
+    color: var(--text-normal);
+    margin: 2px 5px;
+    background: transparent;
+    border: 1px dashed transparent;
+    border-radius: 7px 10px 7px 9px;
+}
+
+body.fcn-theme-cartoon .menu.fcn-context-menu .menu-item:is(:hover, .fcn-context-menu-active) {
+    background: color-mix(in srgb, var(--fcn-cartoon-sky) 21%, var(--fcn-cartoon-paper-alt));
+    border-color: color-mix(in srgb, var(--fcn-cartoon-sky) 50%, transparent);
+}
+
+body.fcn-theme-cartoon .menu.fcn-context-menu .menu-separator {
+    border-color: color-mix(in srgb, var(--fcn-cartoon-lilac) 32%, var(--background-modifier-border));
+}
+
+body.fcn-theme-cartoon .menu.fcn-context-menu .fcn-context-menu-filter {
+    color: var(--fcn-cartoon-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .folder-column-navigator-view :is(.fcn-navigation-item, .fcn-file-item, .fcn-root-folder-item) {
+        transition: none;
     }
 }

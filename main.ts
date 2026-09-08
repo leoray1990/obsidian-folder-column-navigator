@@ -49,6 +49,9 @@ const DEFAULT_HOVER_PREVIEW_DELAY_MS = 500;
 const DEFAULT_HOVER_PREVIEW_ENABLED = true;
 const DEFAULT_HOVER_PREVIEW_FOLDER_NOTES = true;
 const HOVER_PREVIEW_CLOSE_DELAY_MS = 900;
+const MIN_OVERLAY_OPACITY = 40;
+const MAX_OVERLAY_OPACITY = 100;
+const DEFAULT_OVERLAY_OPACITY = 70;
 const MIN_VERTICAL_TREE_COLUMNS = 2;
 const MAX_VERTICAL_TREE_COLUMNS = 8;
 const DEFAULT_VERTICAL_TREE_COLUMNS = 4;
@@ -60,6 +63,7 @@ type FolderIconStyle = "folder" | "chevron" | "none";
 type FileIconStyle = "file" | "type" | "none";
 type CalendarDisplayMode = "month" | "week" | "year";
 type FileDateDisplay = "none" | "created" | "modified";
+type ThemeStyle = "simple" | "colorful" | "journal";
 
 interface FolderColumnNavigatorSettings {
     hiddenRootPaths: string[];
@@ -73,6 +77,10 @@ interface FolderColumnNavigatorSettings {
     /** Whether hovering a folder previews its detected folder note. */
     hoverPreviewFolderNotes: boolean;
     hoverPreviewDelayMs: number;
+    /** Background opacity used by the plugin's document-level context menu. */
+    contextMenuOpacity: number;
+    /** Background opacity used by the plugin's file and folder hover previews. */
+    hoverPreviewOpacity: number;
     rootFolderFontSize: number;
     fileNameFontSize: number;
     wrapItemNames: boolean;
@@ -92,6 +100,8 @@ interface FolderColumnNavigatorSettings {
     useFilePropertyNames: boolean;
     fileDateDisplay: FileDateDisplay;
     hideFileExtensions: boolean;
+    /** Saved built-in visual theme, also applied to document-level menu portals. */
+    themeStyle: ThemeStyle;
     navigationWidth: number;
     sortField: SortField;
     sortDirection: SortDirection;
@@ -137,6 +147,8 @@ const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
     enableHoverPreview: DEFAULT_HOVER_PREVIEW_ENABLED,
     hoverPreviewFolderNotes: DEFAULT_HOVER_PREVIEW_FOLDER_NOTES,
     hoverPreviewDelayMs: DEFAULT_HOVER_PREVIEW_DELAY_MS,
+    contextMenuOpacity: DEFAULT_OVERLAY_OPACITY,
+    hoverPreviewOpacity: DEFAULT_OVERLAY_OPACITY,
     rootFolderFontSize: DEFAULT_ROOT_FOLDER_FONT_SIZE,
     fileNameFontSize: DEFAULT_FILE_NAME_FONT_SIZE,
     wrapItemNames: false,
@@ -156,6 +168,7 @@ const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
     useFilePropertyNames: false,
     fileDateDisplay: "none",
     hideFileExtensions: false,
+    themeStyle: "simple",
     navigationWidth: DEFAULT_NAVIGATION_WIDTH,
     sortField: "name",
     sortDirection: "asc",
@@ -190,6 +203,13 @@ const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
     calendarFileExtensions: ["md", "canvas", "base"]
 };
 
+/** CSS classes shared by the plugin settings UI and optional Style Settings support. */
+const THEME_STYLE_CLASSES: Record<ThemeStyle, string> = {
+    simple: "fcn-theme-simple",
+    colorful: "fcn-theme-colorful",
+    journal: "fcn-theme-cartoon"
+};
+
 interface NavigationEntry {
     path: string;
     name: string;
@@ -202,6 +222,12 @@ interface ItemGroup {
     items: TAbstractFile[];
     isArchive: boolean;
     hasFolderNote: boolean;
+}
+
+interface GroupOption {
+    key: string;
+    label: string;
+    isArchive: boolean;
 }
 
 type FilterScope =
@@ -263,6 +289,12 @@ function clampHoverPreviewDelay(value: unknown): number {
         : DEFAULT_HOVER_PREVIEW_DELAY_MS;
 }
 
+function clampOverlayOpacity(value: unknown): number {
+    return typeof value === "number"
+        ? Math.max(MIN_OVERLAY_OPACITY, Math.min(MAX_OVERLAY_OPACITY, Math.round(value)))
+        : DEFAULT_OVERLAY_OPACITY;
+}
+
 function cleanCustomFolderNames(value: unknown): Record<string, string> {
     if (!value || typeof value !== "object" || Array.isArray(value)) {
         return {};
@@ -319,6 +351,10 @@ function isFileIconStyle(value: unknown): value is FileIconStyle {
 
 function isFileDateDisplay(value: unknown): value is FileDateDisplay {
     return value === "none" || value === "created" || value === "modified";
+}
+
+function isThemeStyle(value: unknown): value is ThemeStyle {
+    return value === "simple" || value === "colorful" || value === "journal";
 }
 
 function compareNames(a: { name: string }, b: { name: string }): number {
@@ -437,6 +473,35 @@ class FolderDestinationModal extends SuggestModal<TFolder> {
     onChooseSuggestion(folder: TFolder): void {
         this.close();
         void this.onChooseFolder(folder);
+    }
+}
+
+class GroupDestinationModal extends SuggestModal<GroupOption> {
+    constructor(
+        app: FolderColumnNavigatorPlugin["app"],
+        private readonly options: GroupOption[],
+        private readonly onChooseGroup: (group: GroupOption) => Promise<void> | void
+    ) {
+        super(app);
+        this.setPlaceholder("搜索分组（支持拼音）");
+        this.setInstructions([
+            { command: "↑↓", purpose: "选择分组" },
+            { command: "↵", purpose: "设置分组" },
+            { command: "esc", purpose: "取消" }
+        ]);
+    }
+
+    getSuggestions(query: string): GroupOption[] {
+        return this.options.filter(option => !query || filterNameMatches(option.label, query));
+    }
+
+    renderSuggestion(option: GroupOption, el: HTMLElement): void {
+        el.createSpan({ text: option.label });
+    }
+
+    onChooseSuggestion(option: GroupOption): void {
+        this.close();
+        void this.onChooseGroup(option);
     }
 }
 
@@ -903,6 +968,12 @@ export default class FolderColumnNavigator extends Plugin {
     async onload(): Promise<void> {
         await this.loadSettings();
 
+        // Style Settings reads the @settings block from this plugin's CSS.
+        // Ask it to re-parse after the plugin is loaded so the theme class is
+        // available even when Style Settings was enabled after this plugin.
+        this.app.workspace.trigger("parse-style-settings");
+        this.applyThemeStyle();
+
         this.registerView(VIEW_TYPE, leaf => {
             const view = new FolderColumnNavigatorView(leaf, this);
             this.views.add(view);
@@ -981,6 +1052,8 @@ export default class FolderColumnNavigator extends Plugin {
                 ? saved.hoverPreviewFolderNotes
                 : DEFAULT_SETTINGS.hoverPreviewFolderNotes,
             hoverPreviewDelayMs: clampHoverPreviewDelay(saved?.hoverPreviewDelayMs),
+            contextMenuOpacity: clampOverlayOpacity(saved?.contextMenuOpacity),
+            hoverPreviewOpacity: clampOverlayOpacity(saved?.hoverPreviewOpacity),
             rootFolderFontSize: clampItemFontSize(saved?.rootFolderFontSize, DEFAULT_ROOT_FOLDER_FONT_SIZE),
             fileNameFontSize: clampItemFontSize(saved?.fileNameFontSize, DEFAULT_FILE_NAME_FONT_SIZE),
             wrapItemNames: typeof saved?.wrapItemNames === "boolean"
@@ -1026,6 +1099,9 @@ export default class FolderColumnNavigator extends Plugin {
             hideFileExtensions: typeof saved?.hideFileExtensions === "boolean"
                 ? saved.hideFileExtensions
                 : DEFAULT_SETTINGS.hideFileExtensions,
+            themeStyle: isThemeStyle(saved?.themeStyle)
+                ? saved.themeStyle
+                : DEFAULT_SETTINGS.themeStyle,
             navigationWidth: clampNavigationWidth(
                 typeof saved?.navigationWidth === "number" ? saved.navigationWidth : DEFAULT_NAVIGATION_WIDTH
             ),
@@ -1122,6 +1198,34 @@ export default class FolderColumnNavigator extends Plugin {
     async saveSettings(): Promise<void> {
         await this.saveData(this.settings);
         this.refreshViews();
+    }
+
+    /**
+     * Themes need a document-level class because context menus are rendered in
+     * Obsidian's portal outside the individual view container.
+     */
+    applyThemeStyle(): void {
+        document.body.classList.remove(...Object.values(THEME_STYLE_CLASSES));
+        document.body.classList.add(THEME_STYLE_CLASSES[this.settings.themeStyle]);
+        this.applyOverlayOpacity();
+    }
+
+    /**
+     * Both overlays are portalled outside a view, so their configurable CSS
+     * variables belong on the document body. setCssProps avoids static inline
+     * style assignments while keeping current popovers in sync immediately.
+     */
+    applyOverlayOpacity(): void {
+        document.body.setCssProps({
+            "--fcn-context-menu-opacity": `${this.settings.contextMenuOpacity}%`,
+            "--fcn-hover-preview-opacity": `${this.settings.hoverPreviewOpacity}%`
+        });
+    }
+
+    async updateThemeStyle(themeStyle: ThemeStyle): Promise<void> {
+        this.settings.themeStyle = themeStyle;
+        this.applyThemeStyle();
+        await this.saveSettings();
     }
 
     async updateSort(field: SortField, direction: SortDirection = this.settings.sortDirection): Promise<void> {
@@ -1269,15 +1373,17 @@ export default class FolderColumnNavigator extends Plugin {
     getNavigationEntries(): NavigationEntry[] {
         const rootFolders = this.getRootFolders();
         const hidden = new Set(this.settings.hiddenRootPaths);
+        // Root and custom navigation entries are explicit user shortcuts.
+        // Advanced Glob rules apply to the file tree, not to this navigation
+        // list; visibility here is controlled by the navigation settings.
         const rootEntries: NavigationEntry[] = rootFolders
-            .filter(folder => !this.isHiddenByPattern(folder.path))
-            .filter(folder => !hidden.has(folder.path) || this.settings.customFolders.includes(folder.path))
+            .filter(folder => !hidden.has(folder.path))
             .map(folder => ({ path: folder.path, name: folder.name, kind: "root-folder" }));
 
         const customEntries: NavigationEntry[] = [];
         this.settings.customFolders.forEach(path => {
             const folder = this.getFolder(path);
-            if (folder && !this.isHiddenByPattern(folder.path)) {
+            if (folder) {
                 customEntries.push({
                     path: folder.path,
                     name: this.getCustomFolderDisplayName(folder.path, folder.name),
@@ -1516,6 +1622,7 @@ class FolderColumnNavigatorView extends ItemView {
     private readonly clickHandler = (event: MouseEvent): void => this.handleBlankClick(event);
     private contextMenu: Menu | null = null;
     private contextMenuEl: HTMLElement | null = null;
+    private contextMenuExistingElements = new Set<HTMLElement>();
     private contextMenuOrigin: HTMLElement | null = null;
     private contextMenuFilter = "";
     private contextMenuFilterEl: HTMLElement | null = null;
@@ -2164,30 +2271,34 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private renderNavigation(): void {
-        this.navigationEl.empty();
-        this.rootFolderGrid = null;
-        this.rootFolderExpandButton = null;
-        this.topNavigationFilterButton = null;
-        this.rootFolderResizeObserver?.disconnect();
-
         const entries = this.plugin.getNavigationEntries();
         const rootEntry = entries[0];
         const navigableEntries = entries.filter(entry => entry.kind !== "root");
 
         if (this.plugin.settings.showRootFoldersAtTop) {
-            this.renderTopRootFolders(rootEntry, navigableEntries);
+            this.navigationEl.empty();
+            if (this.rootFolderGrid && this.rootFolderExpandButton) {
+                // Keep the toolbar DOM (and its icon buttons) stable while a
+                // selection refreshes. Rebuilding it here makes every click
+                // visibly flash the locate/settings/sort controls.
+                this.updateTopRootFolders(rootEntry, navigableEntries);
+            } else {
+                this.renderTopRootFolders(rootEntry, navigableEntries);
+            }
             return;
         }
 
+        this.rootFolderResizeObserver?.disconnect();
+        this.rootFolderGrid = null;
+        this.rootFolderExpandButton = null;
+        this.topNavigationFilterButton = null;
+        this.navigationEl.empty();
         this.topRootFolderPane.empty();
-        if (!this.plugin.settings.showRootFoldersAtTop) {
-            entries.forEach(entry => this.createNavigationRow(
-                this.navigationEl,
-                entry,
-                entry.kind === "custom" ? "fcn-custom-folder-list-item" : undefined
-            ));
-            return;
-        }
+        entries.forEach(entry => this.createNavigationRow(
+            this.navigationEl,
+            entry,
+            entry.kind === "custom" ? "fcn-custom-folder-list-item" : undefined
+        ));
     }
 
     private renderTopRootFolders(rootEntry: NavigationEntry, rootFolders: NavigationEntry[]): void {
@@ -2219,6 +2330,44 @@ class FolderColumnNavigatorView extends ItemView {
         this.rootFolderResizeObserver?.observe(this.rootFolderGrid);
     }
 
+    /**
+     * Updates the top root-folder tags without recreating the toolbar. Most
+     * refreshes only change the selected/filter state, so preserving the
+     * existing rows prevents icon repaint and layout flicker.
+     */
+    private updateTopRootFolders(rootEntry: NavigationEntry, rootFolders: NavigationEntry[]): void {
+        if (!this.rootFolderGrid || !this.rootFolderExpandButton) {
+            this.renderTopRootFolders(rootEntry, rootFolders);
+            return;
+        }
+
+        const expectedEntries = [rootEntry, ...rootFolders];
+        const existingRows = Array.from(
+            this.topRootFolderPane.querySelectorAll<HTMLElement>('[data-fcn-row="navigation"]')
+        );
+        const canReuseRows = existingRows.length === expectedEntries.length && expectedEntries.every((entry, index) => {
+            const row = existingRows[index];
+            return row?.dataset.fcnPath === entry.path &&
+                row.querySelector<HTMLElement>(".fcn-item-name")?.textContent === this.getNavigationEntryDisplayName(entry);
+        });
+
+        if (!canReuseRows) {
+            this.rootFolderGrid.empty();
+            rootFolders.forEach(entry => this.createNavigationRow(this.rootFolderGrid as HTMLElement, entry, "fcn-root-folder-item"));
+        }
+
+        const entriesByPath = new Map(expectedEntries.map(entry => [entry.path, entry]));
+        this.topRootFolderPane
+            .querySelectorAll<HTMLElement>('[data-fcn-row="navigation"]')
+            .forEach(row => {
+                const entry = entriesByPath.get(row.dataset.fcnPath ?? "");
+                if (entry) {
+                    this.updateNavigationRowState(row, entry);
+                }
+            });
+        this.updateRootFolderOverflow();
+    }
+
     private createLocateButton(parent: HTMLElement): HTMLButtonElement {
         const button = parent.createEl("button", {
             cls: "fcn-icon-button clickable-icon",
@@ -2246,6 +2395,14 @@ class FolderColumnNavigatorView extends ItemView {
         });
         button.addEventListener("click", () => this.clearFilter());
         return button;
+    }
+
+    private updateNavigationRowState(row: HTMLElement, entry: NavigationEntry): void {
+        row.toggleClass("is-selected", entry.path === this.navigationBasePath);
+        row.toggleClass(
+            "is-filtered-out",
+            this.isNavigationFiltering() && !filterNameMatches(entry.name, this.filterState?.query ?? "")
+        );
     }
 
     private createItemIcon(parent: HTMLElement, iconName: string | null): void {
@@ -2347,10 +2504,7 @@ class FolderColumnNavigatorView extends ItemView {
         }
 
         const folder = entry.kind === "root" ? null : this.plugin.getFolder(entry.path);
-        const isCustomFolderShortcut = entry.kind === "custom" && this.plugin.settings.customFolders.includes(entry.path);
-        const customFolderDisplayName = isCustomFolderShortcut
-            ? this.plugin.settings.customFolderNames[entry.path]?.trim() ?? ""
-            : "";
+        this.setRainbowIndex(row, entry.path || "__vault_root__");
         this.createItemIcon(
             row,
             entry.kind === "root" || isTopFolderTag || !folder
@@ -2358,11 +2512,7 @@ class FolderColumnNavigatorView extends ItemView {
                 : this.getFolderStateIcon(folder)
         );
         row.createSpan({
-            // A non-empty custom label wins; clearing it falls back to the
-            // configured folder-note property (usually the first alias).
-            text: folder && !customFolderDisplayName
-                ? this.getItemDisplayName(folder, entry.name, this.plugin.settings.useRootFolderPropertyNames)
-                : entry.name,
+            text: this.getNavigationEntryDisplayName(entry),
             cls: "fcn-item-name"
         });
         if (folder && this.plugin.settings.hoverPreviewFolderNotes) {
@@ -2388,6 +2538,32 @@ class FolderColumnNavigatorView extends ItemView {
             this.enableNavigationEntryDragging(row, entry.path);
         }
         return row;
+    }
+
+    private getNavigationEntryDisplayName(entry: NavigationEntry): string {
+        const folder = entry.kind === "root" ? null : this.plugin.getFolder(entry.path);
+        const isCustomFolderShortcut = entry.kind === "custom" && this.plugin.settings.customFolders.includes(entry.path);
+        const customFolderDisplayName = isCustomFolderShortcut
+            ? this.plugin.settings.customFolderNames[entry.path]?.trim() ?? ""
+            : "";
+        // A non-empty custom label wins; clearing it falls back to the
+        // configured folder-note property (usually the first alias).
+        return folder && !customFolderDisplayName
+            ? this.getItemDisplayName(folder, entry.name, this.plugin.settings.useRootFolderPropertyNames)
+            : entry.name;
+    }
+
+    /**
+     * Gives a directory-derived, stable rainbow hue to elements rendered in
+     * the colourful theme. The path, rather than its position in a list, is
+     * used as the seed so reordering root folders never changes their colour.
+     */
+    private setRainbowIndex(element: HTMLElement, seed: string): void {
+        let hash = 0;
+        for (let index = 0; index < seed.length; index += 1) {
+            hash = ((hash * 31) + seed.charCodeAt(index)) >>> 0;
+        }
+        element.dataset.fcnRainbow = String(hash % 7);
     }
 
     private enableNavigationEntryDragging(row: HTMLElement, path: string): void {
@@ -2686,12 +2862,13 @@ class FolderColumnNavigatorView extends ItemView {
         this.dragExpandedTargetPath = null;
         this.draggedItemPaths = [];
         this.containerEl?.querySelectorAll<HTMLElement>(
-            ".is-item-dragging, .is-move-drop-target, .is-column-move-drop-target, .is-item-drop-before, .is-item-drop-after"
+            ".is-item-dragging, .is-move-drop-target, .is-column-move-drop-target, .is-group-drop-target, .is-item-drop-before, .is-item-drop-after"
         ).forEach(item => {
             item.removeClass(
                 "is-item-dragging",
                 "is-move-drop-target",
                 "is-column-move-drop-target",
+                "is-group-drop-target",
                 "is-item-drop-before",
                 "is-item-drop-after"
             );
@@ -2713,14 +2890,47 @@ class FolderColumnNavigatorView extends ItemView {
         if (!this.rootFolderGrid || !this.rootFolderExpandButton) {
             return;
         }
-        this.rootFolderGrid.toggleClass("is-expanded", this.rootFoldersExpanded);
-        const collapsedHeight = this.plugin.settings.rootFolderVisibleRows * 34 + 6;
-        const hasOverflow = this.rootFolderGrid.scrollHeight > collapsedHeight + 1;
+        const visibleRows = Math.max(1, this.plugin.settings.rootFolderVisibleRows);
+        const gridRect = this.rootFolderGrid.getBoundingClientRect();
+        const paddingBottom = Number.parseFloat(getComputedStyle(this.rootFolderGrid).paddingBottom) || 0;
+        const rowBottoms: number[] = [];
+        let rowTop: number | null = null;
+        this.rootFolderGrid
+            .querySelectorAll<HTMLElement>(".fcn-root-folder-item:not(.is-filtered-out)")
+            .forEach(item => {
+                const rect = item.getBoundingClientRect();
+                if (rect.width <= 0 || rect.height <= 0) {
+                    return;
+                }
+                if (rowTop === null || Math.abs(rect.top - rowTop) > 1) {
+                    rowTop = rect.top;
+                    rowBottoms.push(rect.bottom);
+                } else {
+                    rowBottoms[rowBottoms.length - 1] = Math.max(
+                        rowBottoms[rowBottoms.length - 1],
+                        rect.bottom
+                    );
+                }
+            });
+        const hasOverflow = rowBottoms.length > visibleRows;
+        if (!hasOverflow) {
+            this.rootFoldersExpanded = false;
+        }
+        const collapsedRowIndex = Math.min(visibleRows, rowBottoms.length) - 1;
+        if (collapsedRowIndex >= 0) {
+            const collapsedHeight = Math.ceil(
+                rowBottoms[collapsedRowIndex] - gridRect.top + paddingBottom
+            );
+            this.rootFolderGrid.setCssProps({
+                "--fcn-root-folder-collapsed-height": `${collapsedHeight}px`
+            });
+        }
+        this.rootFolderGrid.toggleClass("is-expanded", this.rootFoldersExpanded && hasOverflow);
         this.rootFolderExpandButton.toggleClass("is-hidden", !hasOverflow);
         const icon = this.rootFolderExpandButton.querySelector<HTMLElement>(".fcn-root-folder-expand-icon");
         const label = this.rootFolderExpandButton.querySelector<HTMLElement>(".fcn-root-folder-expand-label");
         if (icon) {
-            setIcon(icon, this.rootFoldersExpanded ? "chevron-up" : "chevron-down");
+            this.setIconIfChanged(icon, this.rootFoldersExpanded ? "chevron-up" : "chevron-down");
         }
         label?.setText(this.rootFoldersExpanded ? "收起" : "展开");
         this.rootFolderExpandButton.setAttribute(
@@ -2734,7 +2944,10 @@ class FolderColumnNavigatorView extends ItemView {
         const folder = this.plugin.getFolder(activePath) ?? this.plugin.app.vault.getRoot();
         this.breadcrumbEl.setText(folder.path === ROOT_PATH ? this.plugin.app.vault.getName() : folder.path);
         this.sortSelect.value = this.plugin.settings.sortField;
-        setIcon(this.sortDirectionButton, this.plugin.settings.sortDirection === "asc" ? "arrow-up" : "arrow-down");
+        this.setIconIfChanged(
+            this.sortDirectionButton,
+            this.plugin.settings.sortDirection === "asc" ? "arrow-up" : "arrow-down"
+        );
         this.sortDirectionButton.disabled = this.plugin.settings.sortField === "custom";
         this.sortDirectionButton.setAttribute(
             "aria-label",
@@ -2743,6 +2956,14 @@ class FolderColumnNavigatorView extends ItemView {
                 : this.plugin.settings.sortDirection === "asc" ? "当前正序，点击切换为倒序" : "当前倒序，点击切换为正序"
         );
         this.updateNavigationFilterButtons();
+    }
+
+    private setIconIfChanged(element: HTMLElement, iconName: string): void {
+        if (element.dataset.fcnIconName === iconName) {
+            return;
+        }
+        setIcon(element, iconName);
+        element.dataset.fcnIconName = iconName;
     }
 
     private updateNavigationFilterButtons(): void {
@@ -2804,6 +3025,7 @@ class FolderColumnNavigatorView extends ItemView {
         column.toggleClass("fcn-vertical-tree-column", this.isVerticalTreeColumn(columnIndex));
         column.dataset.fcnColumn = String(columnIndex);
         column.dataset.fcnPath = path;
+        this.setRainbowIndex(column, path || "__vault_root__");
         column.setCssProps({
             "--fcn-column-min-width": `${this.plugin.settings.columnMinWidth}px`,
             "--fcn-column-max-width": `${this.plugin.settings.columnMaxWidth}px`,
@@ -2990,9 +3212,15 @@ class FolderColumnNavigatorView extends ItemView {
                 hasFolderNote: false
             }))
             .sort((a, b) => {
-                const archiveDifference = Number(a.isArchive) - Number(b.isArchive);
-                if (archiveDifference) {
-                    return archiveDifference;
+                // Keep the fallback group below every explicitly named group
+                // and keep archive at the very bottom. These two positions
+                // are semantic and must not be affected by pinnedGroups.
+                const position = (group: ItemGroup): number => group.isArchive
+                    ? 2
+                    : group.key === "其他" ? 1 : 0;
+                const positionDifference = position(a) - position(b);
+                if (positionDifference) {
+                    return positionDifference;
                 }
                 const pinDifference = Number(pinnedGroups.has(b.key)) - Number(pinnedGroups.has(a.key));
                 if (pinDifference) {
@@ -3039,6 +3267,7 @@ class FolderColumnNavigatorView extends ItemView {
 
     private addItemGroupHeader(list: HTMLElement, group: ItemGroup, columnIndex: number, groupPath: string): void {
         const header = list.createDiv("fcn-item-group-header");
+        this.setRainbowIndex(header, `${groupPath}\u0000${group.key}`);
         header.dataset.fcnRow = "group";
         header.dataset.fcnColumn = String(columnIndex);
         header.dataset.fcnGroup = group.key;
@@ -3060,10 +3289,162 @@ class FolderColumnNavigatorView extends ItemView {
             setIcon(icon, "pin");
             title.setAttribute("title", "已置顶分组");
         }
+        this.enableGroupDropTarget(header, group.key);
         header.addEventListener("contextmenu", event => {
             event.preventDefault();
             this.showGroupContextMenu(group.key, group.label, header, event);
         });
+    }
+
+    /** Make a group header a drop target for assigning the configured group property. */
+    private enableGroupDropTarget(header: HTMLElement, groupKey: string): void {
+        header.addEventListener("dragover", event => {
+            const items = this.getDraggedItems();
+            if (!this.canAssignItemsToGroup(items, groupKey)) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            header.addClass("is-group-drop-target");
+            if (event.dataTransfer) {
+                event.dataTransfer.dropEffect = "move";
+            }
+        });
+        header.addEventListener("dragleave", event => {
+            if (event.relatedTarget instanceof Node && header.contains(event.relatedTarget)) {
+                return;
+            }
+            header.removeClass("is-group-drop-target");
+        });
+        header.addEventListener("drop", event => {
+            const items = this.getDraggedItems();
+            if (!this.canAssignItemsToGroup(items, groupKey)) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            header.removeClass("is-group-drop-target");
+            this.clearItemDragState();
+            void this.assignItemsToGroup(items, groupKey);
+        });
+    }
+
+    private getGroupPropertyFile(item: TAbstractFile): TFile | null {
+        if (item instanceof TFile) {
+            return item.extension.toLocaleLowerCase() === "md" ? item : null;
+        }
+        return item instanceof TFolder ? this.getFolderNote(item, true) : null;
+    }
+
+    private canAssignItemsToGroup(items: TAbstractFile[], groupKey: string): boolean {
+        return Boolean(this.plugin.settings.groupItems && this.plugin.settings.groupProperty.trim() && groupKey) &&
+            items.length > 0 && items.every(item => Boolean(this.getGroupPropertyFile(item)));
+    }
+
+    private getGroupOptionsForItems(items: TAbstractFile[]): GroupOption[] {
+        if (!this.plugin.settings.groupItems || !this.plugin.settings.groupProperty.trim()) {
+            return [];
+        }
+        const parent = items[0]?.parent;
+        if (!parent || items.some(item => item.parent?.path !== parent.path)) {
+            return [];
+        }
+        const groups = this.getItemGroups(
+            [...parent.children].sort((left, right) => this.compareItems(left, right, parent))
+        ).filter(group => Boolean(group.key));
+        const options = groups.map(group => ({
+            key: group.key,
+            label: group.label,
+            isArchive: group.isArchive
+        }));
+        const existingKeys = new Set(options.map(option => option.key));
+        if (!existingKeys.has("其他")) {
+            options.push({ key: "其他", label: "其他", isArchive: false });
+        }
+        if (!existingKeys.has(ARCHIVE_GROUP_KEY) && this.plugin.settings.groupArchiveNames.some(name => name.trim())) {
+            options.push({ key: ARCHIVE_GROUP_KEY, label: "归档", isArchive: true });
+        }
+        return options;
+    }
+
+    private addSetGroupMenuItem(menu: Menu, items: TAbstractFile[]): void {
+        if (!this.plugin.settings.groupItems || !this.plugin.settings.groupProperty.trim()) {
+            return;
+        }
+        if (!items.every(item => Boolean(this.getGroupPropertyFile(item)))) {
+            return;
+        }
+        const options = this.getGroupOptionsForItems(items);
+        if (options.length === 0) {
+            return;
+        }
+        menu.addItem(item => item
+            .setSection("action")
+            .setTitle("设置分组…")
+            .setIcon("layers-2")
+            .onClick(() => this.openGroupDestinationModal(items, options)));
+    }
+
+    private openGroupDestinationModal(items: TAbstractFile[], options: GroupOption[]): void {
+        new GroupDestinationModal(
+            this.plugin.app,
+            options,
+            group => this.assignItemsToGroup(items, group.key)
+        ).open();
+    }
+
+    /**
+     * Assigns a group while preserving unrelated list values. Archive values
+     * are mutually exclusive with the active grouping value: moving out of
+     * archive removes every configured archive marker and puts the selected
+     * group first; moving into archive puts the configured archive marker
+     * first so the grouping resolver always treats it as archived.
+     */
+    private async assignItemsToGroup(items: TAbstractFile[], groupKey: string): Promise<void> {
+        const property = this.plugin.settings.groupProperty.trim();
+        if (!property || !this.plugin.settings.groupItems || !groupKey) {
+            new Notice("请先在设置中开启分组并填写分组属性。", 3000);
+            return;
+        }
+        const targets = items
+            .map(item => ({ item, file: this.getGroupPropertyFile(item) }))
+            .filter((target): target is { item: TAbstractFile; file: TFile } => Boolean(target.file));
+        if (targets.length === 0) {
+            new Notice("只能为 Markdown 笔记或已有文件夹笔记设置分组。", 3500);
+            return;
+        }
+
+        const archiveNames = new Set(this.plugin.settings.groupArchiveNames
+            .map(name => name.trim().toLocaleLowerCase())
+            .filter(Boolean));
+        const archiveValue = this.plugin.settings.groupArchiveNames.find(name => name.trim())?.trim() ?? "archive";
+        let updatedCount = 0;
+        let failedCount = items.length - targets.length;
+        for (const target of targets) {
+            try {
+                await this.plugin.app.fileManager.processFrontMatter(target.file, frontmatter => {
+                    const existingValues = this.getGroupMetadataValues(frontmatter[property]);
+                    const withoutArchive = existingValues.filter(value => !archiveNames.has(value.toLocaleLowerCase()));
+                    const nextValues = groupKey === ARCHIVE_GROUP_KEY
+                        ? [archiveValue, ...withoutArchive.filter(value => value !== archiveValue)]
+                        : [groupKey, ...withoutArchive.filter(value => value !== groupKey)];
+                    frontmatter[property] = nextValues;
+                });
+                updatedCount += 1;
+            } catch (error) {
+                failedCount += 1;
+                console.error("Folder Column Navigator: group property update failed", target.file.path, error);
+            }
+        }
+        if (updatedCount > 0) {
+            this.clearItemSelection();
+            this.refresh();
+        }
+        if (failedCount > 0) {
+            new Notice(`已设置 ${updatedCount} 个项目，${failedCount} 个项目无法写入分组属性。`, 4500);
+        } else {
+            new Notice(`已将 ${updatedCount} 个项目设置为“${groupKey === ARCHIVE_GROUP_KEY ? "归档" : groupKey}”。`, 2500);
+        }
     }
 
     private addSpecialListItem(
@@ -3092,6 +3473,7 @@ class FolderColumnNavigatorView extends ItemView {
     ): void {
         const row = list.createDiv("fcn-file-item fcn-file-tree-item");
         this.setRowMetadata(row, columnIndex, itemIndex, "folder", folder.path);
+        this.setRainbowIndex(row, folder.path);
         row.dataset.fcnParentPath = parentPath;
         if (treeDepth > 0) {
             row.addClass("fcn-vertical-tree-item");
@@ -3510,6 +3892,7 @@ class FolderColumnNavigatorView extends ItemView {
             .setTitle(`移动 ${items.length} 个项目到…`)
             .setIcon("folder-input")
             .onClick(() => this.promptBatchMove(items)));
+        this.addSetGroupMenuItem(menu, items);
         const markdownFiles = items.filter(
             (item): item is TFile => item instanceof TFile && item.extension.toLocaleLowerCase() === "md"
         );
@@ -3542,6 +3925,7 @@ class FolderColumnNavigatorView extends ItemView {
         menu.addSeparator();
         menu.addItem(item => item.setSection("action").setTitle("重命名").setIcon("edit-3").onClick(() => this.promptRename(file)));
         menu.addItem(item => item.setSection("action").setTitle("移动到…").setIcon("folder-input").onClick(() => this.promptMove(file)));
+        this.addSetGroupMenuItem(menu, [file]);
         menu.addSeparator();
         menu.addItem(item => item.setSection("danger").setTitle("删除").setIcon("trash-2").setWarning(true).onClick(() => void this.deleteItem(file)));
         this.addExtensionMenuItems(menu, file);
@@ -3576,6 +3960,7 @@ class FolderColumnNavigatorView extends ItemView {
         menu.addItem(item => item.setSection("action-primary").setTitle("新建子文件夹").setIcon("folder-plus").onClick(() => this.promptCreateFolder(folder)));
         menu.addItem(item => item.setSection("action-primary").setTitle("新建白板").setIcon("layout-dashboard").onClick(() => this.promptCreateCanvas(folder)));
         menu.addItem(item => item.setSection("action-primary").setTitle("新建数据库").setIcon("table-properties").onClick(() => this.promptCreateBase(folder)));
+        this.addSetGroupMenuItem(menu, [folder]);
         if (folder.path !== ROOT_PATH && !this.plugin.settings.customFolders.includes(folder.path)) {
             menu.addItem(item => item
                 .setSection("action")
@@ -3613,6 +3998,10 @@ class FolderColumnNavigatorView extends ItemView {
     private showContextMenu(menu: Menu, origin: HTMLElement, event?: MouseEvent): void {
         this.contextMenu = menu;
         this.contextMenuOrigin = origin;
+        // A menu is rendered in a document-level portal. Record the existing
+        // menus before opening ours so the themed/keyboard-enabled element is
+        // always this menu, not an unrelated menu already on screen.
+        this.contextMenuExistingElements = new Set(Array.from(document.querySelectorAll<HTMLElement>(".menu")));
         this.contextMenuFilter = "";
         this.contextMenuActiveIndex = 0;
         this.configureContextMenuKeyboard(menu);
@@ -3633,15 +4022,23 @@ class FolderColumnNavigatorView extends ItemView {
         window.requestAnimationFrame(() => this.initializeContextMenuKeyboard(menu));
     }
 
-    private initializeContextMenuKeyboard(menu: Menu): void {
+    private initializeContextMenuKeyboard(menu: Menu, attempt = 0): void {
         if (this.contextMenu !== menu) {
             return;
         }
         const menus = Array.from(document.querySelectorAll<HTMLElement>(".menu"));
-        this.contextMenuEl = menus[menus.length - 1] ?? null;
+        this.contextMenuEl = menus.find(menuEl => !this.contextMenuExistingElements.has(menuEl))
+            ?? menus[menus.length - 1]
+            ?? null;
         if (!this.contextMenuEl) {
+            if (attempt < 2) {
+                window.requestAnimationFrame(() => this.initializeContextMenuKeyboard(menu, attempt + 1));
+            }
             return;
         }
+        // Theme only menus opened by this view; other Obsidian menus stay
+        // untouched even when a built-in theme is selected.
+        this.contextMenuEl.addClass("fcn-context-menu");
         this.contextMenuEl.tabIndex = -1;
         this.contextMenuFilterEl = this.contextMenuEl.createDiv("fcn-context-menu-filter");
         this.contextMenuFilterEl.hide();
@@ -3662,6 +4059,7 @@ class FolderColumnNavigatorView extends ItemView {
     private clearContextMenuState(): void {
         this.contextMenu = null;
         this.contextMenuEl = null;
+        this.contextMenuExistingElements.clear();
         this.contextMenuOrigin = null;
         this.contextMenuFilter = "";
         this.contextMenuFilterEl = null;
@@ -5579,6 +5977,56 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                 items: [
                     {
                         type: "group",
+                        heading: "主题",
+                        items: [
+                            {
+                                name: "主题风格",
+                                desc: "立即应用到导航、文件树、分组、日历、按钮和右键菜单。Style Settings 仍可作为可选的切换入口。",
+                                control: {
+                                    type: "dropdown",
+                                    key: "themeStyle",
+                                    options: {
+                                        simple: "简洁分格（默认）",
+                                        colorful: "彩色风格",
+                                        journal: "手帐风格"
+                                    }
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        type: "group",
+                        heading: "浮层",
+                        items: [
+                            {
+                                name: "右键菜单背景不透明度",
+                                desc: "只调整菜单底色，不影响文字和图标。数值越低透出背景越多；默认 70%。",
+                                control: {
+                                    type: "slider",
+                                    key: "contextMenuOpacity",
+                                    min: MIN_OVERLAY_OPACITY,
+                                    max: MAX_OVERLAY_OPACITY,
+                                    step: 5,
+                                    displayFormat: value => `${value}%`
+                                }
+                            },
+                            {
+                                name: "悬浮预览背景不透明度",
+                                desc: "只调整预览窗口底色，不影响预览内容。数值越低透出背景越多；默认 70%。",
+                                visible: () => this.plugin.settings.enableHoverPreview,
+                                control: {
+                                    type: "slider",
+                                    key: "hoverPreviewOpacity",
+                                    min: MIN_OVERLAY_OPACITY,
+                                    max: MAX_OVERLAY_OPACITY,
+                                    step: 5,
+                                    displayFormat: value => `${value}%`
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        type: "group",
                         heading: "文字与布局",
                         items: [
                             {
@@ -5723,7 +6171,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                             },
                             {
                                 name: "分组属性",
-                                desc: "填写 Frontmatter 属性名，例如 category 或 project。支持逗号分隔值或 YAML 数组；普通多值只取第一个，只要任一值命中归档名称就归入“归档”。没有值的条目归入“其他”。",
+                                desc: "填写 Frontmatter 属性名，例如 category 或 project。支持逗号分隔值或 YAML 数组；普通多值只取第一个，只要任一值命中归档名称就归入“归档”。没有值的条目归入“其他”，并排在普通分组之后、归档之前。",
                                 visible: () => this.plugin.settings.groupItems,
                                 control: {
                                     type: "text",
@@ -5982,6 +6430,11 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
 
     private async applyControlValue(key: string, value: unknown): Promise<void> {
         switch (key) {
+            case "themeStyle":
+                if (isThemeStyle(value)) {
+                    await this.plugin.updateThemeStyle(value);
+                }
+                return;
             case "showRootFoldersAtTop":
             case "verticalTreeEnabled":
             case "verticalTreeCollapseSiblings":
@@ -6011,6 +6464,14 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                 break;
             case "hoverPreviewDelayMs":
                 this.plugin.settings.hoverPreviewDelayMs = clampHoverPreviewDelay(value);
+                break;
+            case "contextMenuOpacity":
+                this.plugin.settings.contextMenuOpacity = clampOverlayOpacity(value);
+                this.plugin.applyOverlayOpacity();
+                break;
+            case "hoverPreviewOpacity":
+                this.plugin.settings.hoverPreviewOpacity = clampOverlayOpacity(value);
+                this.plugin.applyOverlayOpacity();
                 break;
             case "rootFolderVisibleRows":
                 this.plugin.settings.rootFolderVisibleRows = Math.max(1, Math.min(8, Math.round(Number(value))));
