@@ -23,7 +23,7 @@ import { Calendar } from "@fullcalendar/core";
 import zhCnLocale from "@fullcalendar/core/locales/zh-cn";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
-import { DEFAULT_DAILY_NOTE, cleanDailyNoteConfig, renderDailyNoteEditor, CreateDailyNoteModal, type DailyNoteConfig } from "./daily-note";
+import { DEFAULT_DAILY_NOTE, cleanDailyNoteConfig, renderDailyNoteEditor, preserveSettingsScroll, CreateDailyNoteModal, type DailyNoteConfig } from "./daily-note";
 
 const VIEW_TYPE = "folder-column-navigator";
 const CALENDAR_VIEW_TYPE = "folder-column-navigator-calendar";
@@ -154,6 +154,8 @@ interface FolderColumnNavigatorSettings {
 }
 
 const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
+    // Portable preferences from the user's current setup. Vault-specific paths,
+    // ordering, widths and created-note associations intentionally start empty.
     hiddenRootPaths: [],
     customFolders: [],
     customFolderNames: {},
@@ -167,11 +169,11 @@ const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
     hoverPreviewOpacity: DEFAULT_OVERLAY_OPACITY,
     rootFolderFontSize: DEFAULT_ROOT_FOLDER_FONT_SIZE,
     fileNameFontSize: DEFAULT_FILE_NAME_FONT_SIZE,
-    wrapItemNames: false,
-    showItemSeparators: true,
+    wrapItemNames: true,
+    showItemSeparators: false,
     wrapItemNameMaxLines: DEFAULT_ITEM_NAME_WRAP_LINES,
-    alignFileTreeNames: false,
-    showFolderNotes: false,
+    alignFileTreeNames: true,
+    showFolderNotes: true,
     folderNoteMatchFolderName: true,
     folderNoteMatchSpecialName: true,
     folderNoteSpecialNames: ["首页", "Readme", "Home"],
@@ -184,7 +186,7 @@ const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
     useFolderTreePropertyNames: false,
     useFilePropertyNames: false,
     fileDateDisplay: "none",
-    hideFileExtensions: false,
+    hideFileExtensions: true,
     themeStyle: "simple",
     colorfulPalette: "rainbow",
     rainbowFolders: true,
@@ -197,27 +199,27 @@ const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
     groupArchiveNames: ["archive"],
     groupSortDirection: "asc",
     pinnedGroups: [],
-    showRootFoldersAtTop: false,
-    rootFolderVisibleRows: 2,
-    verticalTreeEnabled: false,
-    openFoldersInCurrentColumn: false,
+    showRootFoldersAtTop: true,
+    rootFolderVisibleRows: 8,
+    verticalTreeEnabled: true,
+    openFoldersInCurrentColumn: true,
     columnClickAlignment: "current-left",
-    currentColumnStart: 2,
+    currentColumnStart: 3,
     verticalTreeMaxColumns: DEFAULT_VERTICAL_TREE_COLUMNS,
     verticalTreeCollapseSiblings: false,
     showItemMetadata: true,
     showExtensionMenuItems: true,
-    folderIconStyle: "folder",
-    fileIconStyle: "file",
+    folderIconStyle: "chevron",
+    fileIconStyle: "none",
     columnMinWidth: DEFAULT_COLUMN_MIN_WIDTH,
     columnMaxWidth: DEFAULT_COLUMN_MAX_WIDTH,
     columnWidths: {},
-    showCalendarAtBottom: true,
+    showCalendarAtBottom: false,
     calendarShowFileIcons: true,
     calendarOpenSingleMatch: true,
     calendarSearchPaths: [],
-    calendarMatchCreatedDate: true,
-    calendarMatchModifiedDate: true,
+    calendarMatchCreatedDate: false,
+    calendarMatchModifiedDate: false,
     calendarMatchFrontmatter: true,
     calendarFrontmatterKeys: ["updated", "created", "创建日期", "修改日期", "date"],
     calendarMatchFilename: true,
@@ -1208,10 +1210,11 @@ export default class FolderColumnNavigator extends Plugin {
             verticalTreeEnabled: typeof saved?.verticalTreeEnabled === "boolean"
                 ? saved.verticalTreeEnabled
                 : DEFAULT_SETTINGS.verticalTreeEnabled,
-            openFoldersInCurrentColumn: saved?.openFoldersInCurrentColumn === true,
+            openFoldersInCurrentColumn: typeof saved?.openFoldersInCurrentColumn === "boolean"
+                ? saved.openFoldersInCurrentColumn : DEFAULT_SETTINGS.openFoldersInCurrentColumn,
             columnClickAlignment: cleanColumnClickAlignment(saved?.columnClickAlignment, saved?.scrollToNextColumnOnClick),
             currentColumnStart: typeof saved?.currentColumnStart === "number"
-                ? Math.max(1, Math.min(8, Math.round(saved.currentColumnStart) || 2)) : 2,
+                ? Math.max(1, Math.min(8, Math.round(saved.currentColumnStart) || DEFAULT_SETTINGS.currentColumnStart)) : DEFAULT_SETTINGS.currentColumnStart,
             verticalTreeMaxColumns: clampVerticalTreeColumns(saved?.verticalTreeMaxColumns),
             verticalTreeCollapseSiblings: typeof saved?.verticalTreeCollapseSiblings === "boolean"
                 ? saved.verticalTreeCollapseSiblings
@@ -1233,7 +1236,7 @@ export default class FolderColumnNavigator extends Plugin {
             columnWidths: cleanStoredColumnWidths(saved?.columnWidths, columnMinWidth, columnMaxWidth),
             showCalendarAtBottom: typeof saved?.showCalendarAtBottom === "boolean"
                 ? saved.showCalendarAtBottom
-                : legacyCalendarPresentation !== "separate",
+                : legacyCalendarPresentation === undefined ? DEFAULT_SETTINGS.showCalendarAtBottom : legacyCalendarPresentation !== "separate",
             calendarShowFileIcons: typeof saved?.calendarShowFileIcons === "boolean"
                 ? saved.calendarShowFileIcons
                 : DEFAULT_SETTINGS.calendarShowFileIcons,
@@ -1282,9 +1285,9 @@ export default class FolderColumnNavigator extends Plugin {
         }
     }
 
-    async saveSettings(): Promise<void> {
+    async saveSettings(updateSettings = true): Promise<void> {
         await this.saveData(this.settings);
-        this.refreshViews();
+        this.refreshViews(updateSettings);
     }
 
     /** Creation templates do not change matching rules. Never rescan the vault
@@ -1624,9 +1627,9 @@ export default class FolderColumnNavigator extends Plugin {
         await this.saveSettings();
     }
 
-    refreshViews(): void {
+    refreshViews(updateSettings = true): void {
         this.views.forEach(view => view.refresh());
-        this.settingsTab?.updateIfVisible();
+        if (updateSettings) this.settingsTab?.updateIfVisible();
     }
 
     /** Coalesce post-startup filesystem and metadata bursts into one refresh. */
@@ -6196,7 +6199,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
 
     /** Obsidian rebuilds the definitions when the tab opens. */
     updateIfVisible(): void {
-        if (this.containerEl?.isConnected && this.containerEl.getClientRects().length > 0) this.update();
+        if (this.containerEl?.isConnected && this.containerEl.getClientRects().length > 0) this.refreshSettingsTab();
     }
 
     getControlValue(key: string): unknown {
@@ -6208,7 +6211,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
     }
 
     private refreshSettingsTab(): void {
-        this.update();
+        preserveSettingsScroll(this.containerEl, () => this.update());
     }
 
     /** Render the custom-folder marker as an icon while keeping its path searchable. */
@@ -6257,7 +6260,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                     },
                     {
                         name: "点击目录在当前列打开",
-                        desc: "从指定列开始，单击目录以其内容替换当前列，不再新增右侧列；优先于纵向展开。默认关闭。",
+                        desc: "从指定列开始，单击目录以其内容替换当前列，不再新增右侧列；优先于纵向展开。默认开启。",
                         control: { type: "toggle", key: "openFoldersInCurrentColumn" }
                     },
                     {
@@ -6267,7 +6270,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                     },
                     {
                         name: "当前列打开起始列",
-                        desc: "按文件列表从左到右计数，默认第 2 列；方向键仍使用原有导航方式。",
+                        desc: "按文件列表从左到右计数，默认第 3 列；Enter 与点击共用，右方向键保留展开行为。",
                         visible: () => this.plugin.settings.openFoldersInCurrentColumn,
                         control: { type: "slider", key: "currentColumnStart", min: 1, max: 8, step: 1,
                             displayFormat: value => `第 ${value} 列` }
@@ -6734,22 +6737,6 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                 items: [
                     {
                         type: "group",
-                        heading: "创建每日笔记",
-                        items: [{
-                            name: "创建规则",
-                            render: setting => {
-                                setting.settingEl.addClass("fcn-daily-setting");
-                                renderDailyNoteEditor(setting.settingEl, this.plugin.settings.dailyNote, async config => {
-                                    await this.plugin.saveDailyNoteConfig(config);
-                                }, input => { new FolderPathInputSuggest(this.app, input, folder => {
-                                    input.value = folder.path;
-                                    input.dispatchEvent(new Event("input", { bubbles: true }));
-                                }); }, this.app);
-                            }
-                        }]
-                    },
-                    {
-                        type: "group",
                         heading: "展示",
                         items: [
                             {
@@ -6832,6 +6819,22 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                         }
                     }
                         ]
+                    },
+                    {
+                        type: "group",
+                        heading: "创建每日笔记",
+                        items: [{
+                            name: "创建规则",
+                            render: setting => {
+                                setting.settingEl.addClass("fcn-daily-setting");
+                                renderDailyNoteEditor(setting.settingEl, this.plugin.settings.dailyNote, async config => {
+                                    await this.plugin.saveDailyNoteConfig(config);
+                                }, input => { new FolderPathInputSuggest(this.app, input, folder => {
+                                    input.value = folder.path;
+                                    input.dispatchEvent(new Event("input", { bubbles: true }));
+                                }); }, this.app);
+                            }
+                        }]
                     }
                 ]
             }
@@ -7019,8 +7022,10 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
             default:
                 return;
         }
-        await this.plugin.saveSettings();
-        this.update();
+        // This callback owns the single settings refresh. saveSettings normally
+        // refreshes visible settings too; doing both duplicates custom renderers.
+        await this.plugin.saveSettings(false);
+        this.refreshSettingsTab();
     }
 
     private itemFontSlider(key: "rootFolderFontSize" | "fileNameFontSize") {

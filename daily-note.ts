@@ -1,4 +1,4 @@
-import { AbstractInputSuggest, App, Modal, Setting, TFile, TFolder, moment as obsidianMoment } from "obsidian";
+import { AbstractInputSuggest, App, Modal, Notice, Setting, TFile, TFolder, moment as obsidianMoment } from "obsidian";
 import type momentFactory from "moment";
 // Obsidian exports its shared Moment function with namespace typings.
 const moment = obsidianMoment as unknown as typeof momentFactory;
@@ -177,15 +177,31 @@ const FORMATS = { YYYY: "四位年", YY: "两位年", MM: "两位月", M: "月�
 const TOKENS: Array<[string, string]> = [
     ["年", "{{date:YYYY}}"], ["月", "{{date:MM}}"], ["日", "{{date:DD}}"],
     ["周数", "{{date:WW}}"], ["星期", "{{date:dddd}}"],
+    ["周开始", "{{weekStart:MM-DD}}"], ["周结束", "{{weekEnd:MM-DD}}"],
     ["周开始年", "{{weekStart:YYYY}}"], ["周开始月", "{{weekStart:MM}}"], ["周开始日", "{{weekStart:DD}}"],
     ["周结束年", "{{weekEnd:YYYY}}"], ["周结束月", "{{weekEnd:MM}}"], ["周结束日", "{{weekEnd:DD}}"],
     ["连接符 -", "-"], ["下划线 _", "_"], ["空格", " "], ["固定文字", "日记"]
 ];
 const PRESETS: Record<string, [string, string]> = {
-    "平铺日期": ["日记", "{{date:YYYY-MM-DD}}"],
     "按年月": ["日记/{{date:YYYY}}/{{date:MM}}", "{{date:YYYY-MM-DD}}"],
-    "按年月周": ["日记/{{date:YYYY}}/{{date:MM}}/{{weekStart:YYYY-MM-DD}}-{{weekEnd:YYYY-MM-DD}}", "{{date:YYYY-MM-DD}}"]
+    "平铺日期": ["日记", "{{date:YYYY-MM-DD}}"],
+    "按年月周": ["日记/{{date:YYYY}}/{{date:MM}}/{{weekStart:MM-DD}}-{{weekEnd:MM-DD}}", "{{date:YYYY-MM-DD}}"]
 };
+
+/** DOM replacement briefly collapses settings content. Restore ancestor scroll
+ * positions in this layout and after Obsidian's next rendering frame. */
+export function preserveSettingsScroll(container: HTMLElement, render: () => void): void {
+    const positions: Array<{ element: HTMLElement; top: number; left: number }> = [];
+    for (let element: HTMLElement | null = container; element; element = element.parentElement) {
+        positions.push({ element, top: element.scrollTop, left: element.scrollLeft });
+    }
+    render();
+    const restore = (): void => positions.forEach(({ element, top, left }) => {
+        if (element.isConnected) { element.scrollTop = top; element.scrollLeft = left; }
+    });
+    restore();
+    if (typeof window.requestAnimationFrame === "function") window.requestAnimationFrame(restore);
+}
 function splitBlocks(template: string): string[] {
     return template.match(/\{\{[^{}]+\}\}|[^{}/\-_ ]+|[/\-_ ]|[{}]/g) ?? [];
 }
@@ -202,7 +218,7 @@ export function isValidDailyLiteral(value: string): boolean {
 
 /** Keep format changes within the component's date unit; compound formats belong in advanced mode. */
 export function dailyFormatOptions(format: string): Record<string, string> {
-    const families = [["YYYY", "YY"], ["MM", "M", "MMM", "MMMM"], ["DD", "D"], ["WW", "W"], ["dddd", "ddd"]];
+    const families = [["YYYY", "YY"], ["MM", "M", "MMM", "MMMM"], ["DD", "D"], ["WW", "W"], ["dddd", "ddd"], ["MM-DD", "M-D", "MMDD"]];
     const family = families.find(values => values.includes(format));
     return family ? Object.fromEntries(family.map(value => [value, `${FORMATS[value as keyof typeof FORMATS] ?? value} (${value})`])) :
         { [format]: `高级模板格式：${format}` };
@@ -216,27 +232,48 @@ export function renderDailyNoteEditor(
     app: App
 ): void {
     const draft = { ...config };
+    let saved = { ...config };
+    let savingEnabled = false;
+    let presetChoice = "按年月";
     let advanced = false;
     let sample = new Date();
     let selected: { key: "directory" | "name"; index: number } | null = null;
-    const root = container.createDiv("fcn-daily-editor");
-    const draw = (): void => {
+    // Declarative settings may invoke render again on an existing Setting.
+    // Reuse its single editor host rather than appending another full copy.
+    const hosts = Array.from(container.querySelectorAll<HTMLElement>(":scope > .fcn-daily-editor"));
+    const root = hosts.shift() ?? container.createDiv("fcn-daily-editor");
+    hosts.forEach(host => host.remove());
+    const draw = (): void => preserveSettingsScroll(root, render);
+    const render = (): void => {
         root.empty();
         let invalidLiteral = false;
-        new Setting(root).setName("启用每日笔记创建").addToggle(toggle => toggle.setValue(draft.enabled).onChange(value => {
+        new Setting(root).setName("启用每日笔记创建").addToggle(toggle => toggle.setValue(draft.enabled).setDisabled(savingEnabled).onChange(value => {
+            const previous = draft.enabled;
             draft.enabled = value;
+            savingEnabled = true;
+            draw();
+            const next = { ...saved, enabled: value };
+            void save(next).then(() => { saved = next; }).catch(error => {
+                draft.enabled = previous;
+                new Notice(error instanceof Error ? error.message : "保存失败，请重试。");
+            }).finally(() => { savingEnabled = false; draw(); });
         }));
-        new Setting(root).setName("常用方案").addDropdown(dropdown => {
-            dropdown.addOption("", "选择方案后仍可自由编辑");
+        if (!draft.enabled) return;
+        const applyPreset = (): void => {
+            const [directory, name] = PRESETS[presetChoice];
+            draft.baseDirectory = "日记";
+            draft.directory = directory === "日记" ? "" : directory.slice("日记/".length);
+            draft.name = name; selected = null; draw();
+        };
+        new Setting(root).setName("常用方案").setDesc("选择方案后仍可自由编辑；已有自定义规则不会自动被覆盖，点击“应用方案”可重新应用当前选项。")
+            .addDropdown(dropdown => {
             Object.keys(PRESETS).forEach(name => dropdown.addOption(name, name));
+            dropdown.setValue(presetChoice);
             dropdown.onChange(value => {
                 if (!PRESETS[value]) return;
-                const [directory, name] = PRESETS[value];
-                draft.baseDirectory = "日记";
-                draft.directory = directory === "日记" ? "" : directory.slice("日记/".length);
-                draft.name = name; selected = null; draw();
+                presetChoice = value; applyPreset();
             });
-        });
+        }).addButton(button => button.setButtonText("应用方案").onClick(applyPreset));
         new Setting(root).setName("编辑方式").addDropdown(dropdown => dropdown
             .addOptions({ blocks: "积木组合", advanced: "高级模板" })
             .setValue(advanced ? "advanced" : "blocks").onChange(value => { advanced = value === "advanced"; draw(); }));
@@ -253,6 +290,7 @@ export function renderDailyNoteEditor(
             text.inputEl.type = "date"; text.setValue(moment(sample).format("YYYY-MM-DD"));
             text.onChange(value => { const date = moment(value, "YYYY-MM-DD", true); if (date.isValid()) { sample = date.toDate(); validate(); } });
         });
+        root.append(preview);
         (["directory", "name"] as const).forEach(key => {
             new Setting(root).setName(key === "directory" ? "笔记目录" : "笔记名称").setHeading();
             const editBase = (): void => {
@@ -363,15 +401,21 @@ export function renderDailyNoteEditor(
             ];
             if (key === "directory") {
                 const baseGroup = root.createDiv("fcn-daily-palette-group");
-                baseGroup.createDiv({ text: "基础目录", cls: "fcn-daily-palette-label" });
+                baseGroup.createDiv({ text: "基础", cls: "fcn-daily-palette-label" });
                 const palette = baseGroup.createDiv("fcn-daily-palette");
                 const add = palette.createEl("button", { text: draft.baseDirectory ? "编辑基础目录" : "+ 基础目录", attr: { type: "button" } });
                 add.addEventListener("click", () => {
                     if (!draft.baseDirectory) draft.baseDirectory = "日记";
                     selected = { key, index: -1 }; draw();
                 });
+                const separator = palette.createEl("button", { text: "+ /", attr: { type: "button", title: "目录分隔符" } });
+                separator.draggable = true;
+                separator.addEventListener("dragstart", event => event.dataTransfer?.setData("application/x-fcn-daily-block", JSON.stringify({ value: "/" })));
+                separator.addEventListener("click", () => {
+                    const index = selected?.key === key ? selected.index + 1 : blocks.length;
+                    blocks.splice(index, 0, "/"); selected = { key, index }; replace(blocks);
+                });
             }
-            if (key === "directory") groups.push(["目录分隔符", [["/", "/"]]]);
             groups.forEach(([heading, tokens]) => {
                 const group = root.createDiv("fcn-daily-palette-group");
                 group.createDiv({ text: heading, cls: "fcn-daily-palette-label" });
@@ -408,7 +452,7 @@ export function renderDailyNoteEditor(
         new Setting(root).addButton(button => button.setButtonText("保存创建规则").setCta().onClick(() => {
             if (!validate()) return;
             button.setDisabled(true);
-            void save({ ...draft }).then(() => status.setText("已保存")).catch(error => {
+            void save({ ...draft }).then(() => { saved = { ...draft }; status.setText("已保存"); }).catch(error => {
                 status.setText(error instanceof Error ? error.message : "保存失败，请重试");
             }).finally(() => button.setDisabled(false));
         }));

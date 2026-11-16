@@ -241,3 +241,38 @@ function testColumnAlignment() {
     console.log("PASS: all six horizontal alignment modes, insufficient-left-columns fallback, no vertical scrolling and legacy toggle migration.");
 }
 testColumnAlignment();
+
+async function testDefaultProfile() {
+    const main = ts.createSourceFile("main.ts", fs.readFileSync(path.join(__dirname, "../main.ts"), "utf8"), ts.ScriptTarget.Latest, true);
+    const declarations = main.statements.filter(node => ts.isVariableStatement(node) || ts.isFunctionDeclaration(node)).map(node => node.getText(main)).join("\n");
+    const pluginClass = main.statements.find(node => ts.isClassDeclaration(node) && node.name?.text === "FolderColumnNavigator");
+    const load = pluginClass.members.find(node => node.name?.getText(main) === "loadSettings").getText(main);
+    const { Plugin, defaults } = vm.runInNewContext(ts.transpileModule(`${declarations}\nclass Plugin {${load}}; ({Plugin,defaults:DEFAULT_SETTINGS})`,
+        { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText,
+        { DEFAULT_DAILY_NOTE, cleanDailyNoteConfig, TFile, TFolder });
+    const make = data => {
+        const plugin = new Plugin(); plugin.loadData = async () => data;
+        plugin.getRootFolders = () => [];
+        plugin.cleanPathList = value => Array.isArray(value) ? value : [];
+        return plugin;
+    };
+    const fresh = make(null); await fresh.loadSettings();
+    assert.deepEqual(JSON.parse(JSON.stringify(fresh.settings)), JSON.parse(JSON.stringify(defaults)));
+    const expected = { wrapItemNames: true, showItemSeparators: false, alignFileTreeNames: true,
+        showFolderNotes: true, hideFileExtensions: true, showRootFoldersAtTop: true, rootFolderVisibleRows: 8,
+        verticalTreeEnabled: true, openFoldersInCurrentColumn: true, currentColumnStart: 3,
+        folderIconStyle: "chevron", fileIconStyle: "none", showCalendarAtBottom: false,
+        calendarMatchCreatedDate: false, calendarMatchModifiedDate: false };
+    for (const [key, value] of Object.entries(expected)) assert.equal(fresh.settings[key], value, key);
+    for (const key of ["hiddenRootPaths", "customFolders", "customFolderNames", "rootFolderOrder", "navigationOrder", "customItemOrders", "columnWidths", "calendarCreatedNotes", "calendarSearchPaths", "pinnedGroups"])
+        assert.equal(Object.keys(fresh.settings[key]).length, 0, key);
+    const old = make({ openFoldersInCurrentColumn: false, currentColumnStart: 2, showRootFoldersAtTop: false,
+        rootFolderVisibleRows: 2, showCalendarAtBottom: true, showItemSeparators: true, calendarMatchCreatedDate: true });
+    await old.loadSettings();
+    assert.equal(old.settings.openFoldersInCurrentColumn, false); assert.equal(old.settings.currentColumnStart, 2);
+    assert.equal(old.settings.showRootFoldersAtTop, false); assert.equal(old.settings.rootFolderVisibleRows, 2);
+    assert.equal(old.settings.showCalendarAtBottom, true); assert.equal(old.settings.showItemSeparators, true);
+    assert.equal(old.settings.calendarMatchCreatedDate, true);
+    console.log("PASS: fresh installation uses portable personal defaults, private vault state remains empty, and explicit existing preferences are preserved.");
+}
+testDefaultProfile().catch(error => { console.error(error); process.exitCode = 1; });
