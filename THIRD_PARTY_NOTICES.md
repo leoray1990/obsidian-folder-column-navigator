@@ -61,9 +61,9 @@ SOFTWARE.
 These packages are used to type-check or bundle the source. They are not included in the release assets (`main.js`, `manifest.json`, and `styles.css`).
 
 - [esbuild 0.28.2](https://github.com/evanw/esbuild) — MIT.
-- [builtin-modules 3.3.0](https://github.com/sindresorhus/builtin-modules) — MIT.
 - [TypeScript 5.9.3](https://github.com/microsoft/TypeScript) — Apache-2.0.
-- [Obsidian API 1.13.1](https://github.com/obsidianmd/obsidian-api) — MIT; used as a type/API dependency and supplied by Obsidian at runtime.
+- [Obsidian API 1.14.4](https://github.com/obsidianmd/obsidian-api) — MIT; development type dependency. The APIs actually used by the plugin require Obsidian 1.13.0 or later.
+- [Moment.js 2.31.0](https://github.com/moment/moment) — MIT; development/transitive dependency used in tests. Runtime date formatting uses the shared Moment supplied by Obsidian, not a bundled copy.
 - [@types/node 20.19.43](https://github.com/DefinitelyTyped/DefinitelyTyped) — MIT.
 
 The plugin itself is licensed under [MIT](LICENSE). See each upstream project for its complete license text and copyright notices.
