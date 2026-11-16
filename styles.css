@@ -839,6 +839,169 @@ settings:
     color: var(--text-muted);
 }
 
+.fcn-daily-setting.setting-item {
+    display: block;
+}
+
+.fcn-daily-editor {
+    width: 100%;
+    min-width: 0;
+}
+
+.fcn-daily-blocks,
+.fcn-daily-palette {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 0;
+    min-height: 40px;
+}
+
+.fcn-daily-blocks {
+    padding: 10px;
+    border: 1px solid var(--background-modifier-border);
+    border-radius: var(--radius-m);
+    background: var(--background-primary);
+}
+
+.fcn-daily-blocks button,
+.fcn-daily-palette button {
+    height: auto;
+    min-height: 32px;
+    padding: 5px 9px;
+    white-space: normal;
+    box-shadow: none;
+    border-radius: var(--radius-m);
+}
+
+.fcn-daily-blocks button {
+    background: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-primary));
+    border: 1px solid color-mix(in srgb, var(--interactive-accent) 24%, var(--background-modifier-border));
+}
+
+.fcn-daily-blocks button.is-active {
+    color: var(--text-on-accent);
+    background: var(--interactive-accent);
+}
+
+.fcn-daily-chip {
+    position: relative;
+    max-width: 100%;
+}
+
+.fcn-daily-base-chip > button:first-child {
+    border-style: dashed;
+    font-weight: var(--font-semibold);
+    overflow-wrap: anywhere;
+}
+
+.fcn-daily-base-divider {
+    align-self: center;
+    color: var(--text-muted);
+}
+
+.fcn-daily-blocks .fcn-daily-chip-delete {
+    position: absolute;
+    top: -7px;
+    right: -7px;
+    display: grid;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    min-height: 20px;
+    padding: 0;
+    border-radius: 50%;
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-primary);
+    color: var(--text-muted);
+    visibility: hidden;
+    font-size: 15px;
+    line-height: 1;
+    z-index: 1;
+}
+
+.fcn-daily-chip:hover .fcn-daily-chip-delete,
+.fcn-daily-chip:focus-within .fcn-daily-chip-delete {
+    visibility: visible;
+}
+
+.fcn-daily-blocks .fcn-daily-chip-delete:hover {
+    color: var(--text-error);
+    background: var(--background-modifier-hover);
+}
+
+.fcn-daily-palette-group {
+    margin: 10px 0;
+}
+
+.fcn-daily-palette-label {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    font-weight: var(--font-semibold);
+}
+
+.fcn-daily-palette-group .fcn-daily-palette {
+    padding: 6px 0;
+    min-height: 0;
+}
+
+@media (hover: none) {
+    .fcn-daily-blocks .fcn-daily-chip-delete {
+        visibility: visible;
+    }
+}
+
+.fcn-daily-hint {
+    color: var(--text-muted);
+    font-size: var(--font-ui-smaller);
+    line-height: 1.6;
+}
+
+.fcn-daily-preview {
+    margin: 10px 0;
+    padding: 10px 12px;
+    border-radius: var(--radius-m);
+    border: 1px solid var(--background-modifier-border);
+    background: var(--background-secondary);
+    overflow-wrap: anywhere;
+    font-family: var(--font-monospace);
+}
+
+.fcn-daily-preview.is-error,
+.fcn-daily-error {
+    color: var(--text-error);
+    overflow-wrap: anywhere;
+}
+
+.fcn-daily-template {
+    width: 100%;
+    min-height: 70px;
+    resize: vertical;
+    font-family: var(--font-monospace);
+}
+
+@media (max-width: 600px) {
+    .fcn-daily-editor .setting-item {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    .fcn-daily-editor .setting-item-control {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+        max-width: 100%;
+    }
+}
+
+.folder-column-navigator-view .fcn-calendar-date-creatable {
+    cursor: pointer;
+}
+
+.folder-column-navigator-view .fcn-calendar-date-creatable:hover .fc-daygrid-day-number {
+    background: var(--background-modifier-hover);
+    color: var(--text-normal);
+    border-radius: 50%;
+}
+
 .fcn-columns {
     display: flex;
     flex: 1;
@@ -897,6 +1060,14 @@ settings:
     width: 6px;
     cursor: col-resize;
     touch-action: none;
+}
+
+/* Reserve enough trailing space to left-align even the final column. This is
+ * inside the file-list scroller; the navigation pane never moves with it. */
+.fcn-columns.fcn-align-next-column::after {
+    content: "";
+    flex: 0 0 max(0px, calc(100% - var(--fcn-last-column-width, 0px)));
+    pointer-events: none;
 }
 
 .fcn-column-resize-divider:hover {
@@ -1002,10 +1173,10 @@ settings:
 }
 
 .fcn-root-folder-draggable {
-    cursor: grab;
+    cursor: default;
 }
 
-.fcn-root-folder-draggable:active {
+.fcn-root-folder-draggable.is-root-folder-dragging {
     cursor: grabbing;
 }
 
@@ -1015,11 +1186,9 @@ settings:
 
 .fcn-navigation-item.fcn-item-draggable,
 .fcn-file-item.fcn-item-draggable {
-    cursor: grab;
+    cursor: default;
 }
 
-.fcn-navigation-item.fcn-item-draggable:active,
-.fcn-file-item.fcn-item-draggable:active,
 .fcn-navigation-item.fcn-item-draggable.is-item-dragging,
 .fcn-file-item.fcn-item-draggable.is-item-dragging {
     cursor: grabbing;
@@ -1137,6 +1306,14 @@ settings:
 
 .fcn-file-item.fcn-vertical-tree-item {
     padding-left: calc(7px + var(--fcn-tree-indent, 0px));
+}
+
+/* Preserve border geometry so toggling separators does not shift row positions.
+ * Target rows only: column headers and group boundaries remain unchanged. */
+.folder-column-navigator-view.fcn-hide-item-separators .fcn-column-list .fcn-file-item,
+.folder-column-navigator-view.fcn-hide-item-separators .fcn-calendar-results-item {
+    border-top-color: transparent;
+    border-bottom-color: transparent;
 }
 
 .fcn-navigation-item:hover,
@@ -1626,30 +1803,90 @@ body.fcn-theme-simple .fcn-item-group-header {
 /* Colorful: every directory receives a stable colour from its path. That
  * colour is reused in top tags, navigation, column headers and folder rows,
  * so it remains an orientation aid instead of decoration that moves on sort. */
-body.fcn-theme-colorful .folder-column-navigator-view {
-    --fcn-divider: color-mix(in srgb, var(--interactive-accent) 16%, var(--background-modifier-border));
-    --fcn-divider-strong: color-mix(in srgb, var(--interactive-accent) 30%, var(--background-modifier-border-hover));
-    --fcn-hover: color-mix(in srgb, var(--interactive-accent) 10%, var(--background-modifier-hover));
-    --fcn-selected: color-mix(in srgb, var(--interactive-accent) 17%, var(--background-primary));
-    --fcn-surface: color-mix(in srgb, var(--background-primary) 98%, #38bdf8);
-    --fcn-surface-muted: color-mix(in srgb, var(--background-secondary) 95%, #a78bfa);
-    --fcn-surface-alt: color-mix(in srgb, var(--background-secondary-alt) 91%, #38bdf8);
-    --fcn-header-bg: linear-gradient(90deg, color-mix(in srgb, var(--interactive-accent) 8%, var(--background-secondary)), transparent 72%);
-    --fcn-group-bg: color-mix(in srgb, var(--background-primary) 96%, var(--interactive-accent));
+body.fcn-theme-colorful {
+    --fcn-colorful-0: #e57b53;
+    --fcn-colorful-1: #d6a935;
+    --fcn-colorful-2: #5caf83;
+    --fcn-colorful-3: #4baebc;
+    --fcn-colorful-4: #548be0;
+    --fcn-colorful-5: #856cc9;
+    --fcn-colorful-6: #d86c9a;
+    --fcn-colorful-primary: var(--fcn-colorful-4);
+    --fcn-colorful-secondary: var(--fcn-colorful-5);
+    --fcn-colorful-warm: var(--fcn-colorful-0);
+    --fcn-colorful-soft: #d9e8ff;
+    --fcn-divider: color-mix(in srgb, var(--fcn-colorful-primary) 16%, var(--background-modifier-border));
+    --fcn-divider-strong: color-mix(in srgb, var(--fcn-colorful-primary) 30%, var(--background-modifier-border-hover));
+    --fcn-hover: color-mix(in srgb, var(--fcn-colorful-primary) 10%, var(--background-modifier-hover));
+    --fcn-selected: color-mix(in srgb, var(--fcn-colorful-primary) 17%, var(--background-primary));
+    --fcn-surface: color-mix(in srgb, var(--background-primary) 98%, var(--fcn-colorful-primary));
+    --fcn-surface-muted: color-mix(in srgb, var(--background-secondary) 95%, var(--fcn-colorful-secondary));
+    --fcn-surface-alt: color-mix(in srgb, var(--background-secondary-alt) 91%, var(--fcn-colorful-primary));
+    --fcn-header-bg: linear-gradient(90deg, color-mix(in srgb, var(--fcn-colorful-primary) 8%, var(--background-secondary)), transparent 72%);
+    --fcn-group-bg: color-mix(in srgb, var(--background-primary) 96%, var(--fcn-colorful-primary));
     --fcn-row-radius: 6px;
     --fcn-tag-radius: 8px;
     --fcn-group-radius: 6px;
-    --fcn-focus-ring: color-mix(in srgb, var(--interactive-accent) 78%, transparent);
-    --fcn-rainbow: var(--interactive-accent);
+    --fcn-focus-ring: color-mix(in srgb, var(--fcn-colorful-primary) 78%, transparent);
+    --fcn-rainbow: var(--fcn-colorful-primary);
 }
 
-body.fcn-theme-colorful [data-fcn-rainbow="0"] { --fcn-rainbow: #f97316; }
-body.fcn-theme-colorful [data-fcn-rainbow="1"] { --fcn-rainbow: #eab308; }
-body.fcn-theme-colorful [data-fcn-rainbow="2"] { --fcn-rainbow: #22c55e; }
-body.fcn-theme-colorful [data-fcn-rainbow="3"] { --fcn-rainbow: #06b6d4; }
-body.fcn-theme-colorful [data-fcn-rainbow="4"] { --fcn-rainbow: #3b82f6; }
-body.fcn-theme-colorful [data-fcn-rainbow="5"] { --fcn-rainbow: #8b5cf6; }
-body.fcn-theme-colorful [data-fcn-rainbow="6"] { --fcn-rainbow: #ec4899; }
+/* Palette sets use the same stable path-to-colour mapping. Switching a set
+ * changes the visual character, not the directory's position or geometry. */
+body.fcn-theme-colorful[data-fcn-colorful-palette="ocean"] {
+    --fcn-colorful-0: #177e89;
+    --fcn-colorful-1: #219ebc;
+    --fcn-colorful-2: #4ea8de;
+    --fcn-colorful-3: #4f75c2;
+    --fcn-colorful-4: #5f60b6;
+    --fcn-colorful-5: #70a2c6;
+    --fcn-colorful-6: #3aa8a3;
+    --fcn-colorful-primary: #219ebc;
+    --fcn-colorful-secondary: #4f75c2;
+    --fcn-colorful-warm: #177e89;
+    --fcn-colorful-soft: #d7eff3;
+}
+
+body.fcn-theme-colorful[data-fcn-colorful-palette="forest"] {
+    --fcn-colorful-0: #5c8d58;
+    --fcn-colorful-1: #3f9a70;
+    --fcn-colorful-2: #79a85a;
+    --fcn-colorful-3: #a5a655;
+    --fcn-colorful-4: #b78e4d;
+    --fcn-colorful-5: #9c6554;
+    --fcn-colorful-6: #557e72;
+    --fcn-colorful-primary: #3f9a70;
+    --fcn-colorful-secondary: #5c8d58;
+    --fcn-colorful-warm: #b78e4d;
+    --fcn-colorful-soft: #e5f1df;
+}
+
+body.fcn-theme-colorful[data-fcn-colorful-palette="sunset"] {
+    --fcn-colorful-0: #df6e60;
+    --fcn-colorful-1: #e8954c;
+    --fcn-colorful-2: #d4ad44;
+    --fcn-colorful-3: #bd6e87;
+    --fcn-colorful-4: #9568a5;
+    --fcn-colorful-5: #637fbd;
+    --fcn-colorful-6: #cd6976;
+    --fcn-colorful-primary: #bd6e87;
+    --fcn-colorful-secondary: #9568a5;
+    --fcn-colorful-warm: #e8954c;
+    --fcn-colorful-soft: #f8e1da;
+}
+
+body.fcn-theme-colorful [data-fcn-rainbow="0"] { --fcn-rainbow: var(--fcn-colorful-0); }
+body.fcn-theme-colorful [data-fcn-rainbow="1"] { --fcn-rainbow: var(--fcn-colorful-1); }
+body.fcn-theme-colorful [data-fcn-rainbow="2"] { --fcn-rainbow: var(--fcn-colorful-2); }
+body.fcn-theme-colorful [data-fcn-rainbow="3"] { --fcn-rainbow: var(--fcn-colorful-3); }
+body.fcn-theme-colorful [data-fcn-rainbow="4"] { --fcn-rainbow: var(--fcn-colorful-4); }
+body.fcn-theme-colorful [data-fcn-rainbow="5"] { --fcn-rainbow: var(--fcn-colorful-5); }
+body.fcn-theme-colorful [data-fcn-rainbow="6"] { --fcn-rainbow: var(--fcn-colorful-6); }
+
+/* Disable per-path colors while preserving the selected theme and palette. */
+body.fcn-theme-colorful.fcn-rainbow-folders-disabled [data-fcn-rainbow] {
+  --fcn-rainbow: var(--fcn-colorful-primary);
+}
 
 body.fcn-theme-colorful .fcn-layout,
 body.fcn-theme-colorful .fcn-content-pane,
@@ -1665,39 +1902,46 @@ body.fcn-theme-colorful .fcn-calendar-toggle {
     background: var(--fcn-surface-muted);
 }
 
-body.fcn-theme-colorful .fcn-root-folder-item[data-fcn-rainbow],
-body.fcn-theme-colorful .fcn-root-folder-list-item[data-fcn-rainbow] {
-    background: color-mix(in srgb, var(--fcn-rainbow) 11%, var(--background-primary));
-    border: 1px solid color-mix(in srgb, var(--fcn-rainbow) 35%, var(--background-modifier-border));
-    box-shadow: inset 0 -3px 0 var(--fcn-rainbow);
-}
-
-body.fcn-theme-colorful .fcn-root-folder-item:hover,
-body.fcn-theme-colorful .fcn-root-folder-list-item:hover {
-    background: color-mix(in srgb, var(--fcn-rainbow) 18%, var(--background-primary));
-}
-
-body.fcn-theme-colorful .fcn-root-folder-item.is-selected,
-body.fcn-theme-colorful .fcn-root-folder-list-item.is-selected {
-    background: color-mix(in srgb, var(--fcn-rainbow) 31%, var(--background-primary));
-    border-color: color-mix(in srgb, var(--fcn-rainbow) 72%, var(--background-modifier-border));
-    box-shadow: inset 0 -4px 0 var(--fcn-rainbow);
-    color: var(--text-normal);
-    font-weight: var(--font-semibold);
-}
-
-body.fcn-theme-colorful .fcn-root-folder-item.is-keyboard-selected:not(.is-selected),
-body.fcn-theme-colorful .fcn-root-folder-list-item.is-keyboard-selected:not(.is-selected) {
-    background: color-mix(in srgb, var(--fcn-rainbow) 19%, var(--background-primary));
-    box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--fcn-rainbow) 78%, transparent),
-        inset 0 0 0 1px color-mix(in srgb, var(--fcn-rainbow) 56%, transparent);
-}
-
 body.fcn-theme-colorful .fcn-navigation-item.is-selected:not(.fcn-root-folder-item),
 body.fcn-theme-colorful .fcn-navigation-item.is-keyboard-selected:not(.fcn-root-folder-item),
 body.fcn-theme-colorful .fcn-file-item.is-selected,
 body.fcn-theme-colorful .fcn-file-item.is-keyboard-selected {
     background: var(--fcn-selected);
+}
+
+/* Keep the former border space as padding so the bottom accent never shifts text. */
+body.fcn-theme-colorful .fcn-root-folder-item[data-fcn-rainbow],
+body.fcn-theme-colorful .fcn-root-folder-list-item[data-fcn-rainbow] {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--fcn-rainbow) 10%, var(--background-primary)), transparent 72%);
+    border: 0;
+    padding: 5px 8px;
+    box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--fcn-rainbow) 65%, transparent);
+}
+
+body.fcn-theme-colorful .fcn-root-folder-item[data-fcn-rainbow] {
+    border-radius: var(--fcn-tag-radius);
+}
+
+body.fcn-theme-colorful .fcn-root-folder-item[data-fcn-rainbow]:hover,
+body.fcn-theme-colorful .fcn-root-folder-list-item[data-fcn-rainbow]:hover {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--fcn-rainbow) 16%, var(--background-primary)), transparent 82%);
+    box-shadow: inset 0 -3px 0 color-mix(in srgb, var(--fcn-rainbow) 78%, transparent);
+}
+
+body.fcn-theme-colorful .fcn-root-folder-item[data-fcn-rainbow].is-selected,
+body.fcn-theme-colorful .fcn-root-folder-list-item[data-fcn-rainbow].is-selected {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--fcn-rainbow) 26%, var(--background-primary)), color-mix(in srgb, var(--fcn-rainbow) 8%, var(--background-primary)) 82%);
+    box-shadow: inset 0 -4px 0 var(--fcn-rainbow);
+    color: var(--text-normal);
+    font-weight: var(--font-semibold);
+}
+
+body.fcn-theme-colorful .fcn-root-folder-item[data-fcn-rainbow].is-keyboard-selected:not(.is-selected),
+body.fcn-theme-colorful .fcn-root-folder-item[data-fcn-rainbow].is-root-folder-keyboard-selected:not(.is-selected),
+body.fcn-theme-colorful .fcn-root-folder-list-item[data-fcn-rainbow].is-keyboard-selected:not(.is-selected) {
+    background: linear-gradient(90deg, color-mix(in srgb, var(--fcn-rainbow) 21%, var(--background-primary)), color-mix(in srgb, var(--fcn-rainbow) 5%, var(--background-primary)) 82%);
+    box-shadow: inset 0 -3px 0 var(--fcn-rainbow);
+    color: var(--text-normal);
 }
 
 body.fcn-theme-colorful .fcn-file-item[data-fcn-kind="folder"][data-fcn-rainbow] {
@@ -1726,6 +1970,50 @@ body.fcn-theme-colorful .fcn-item-group-header[data-fcn-rainbow] {
     box-shadow: inset 3px 0 0 var(--fcn-rainbow);
 }
 
+/* Turning off rainbow directories removes the effect, not just its hue. */
+body.fcn-theme-colorful.fcn-rainbow-folders-disabled {
+    --fcn-header-bg: var(--background-secondary);
+}
+
+/* A single shared hue needs no repeated accents when rainbow directories are off. */
+body.fcn-theme-colorful.fcn-rainbow-folders-disabled :is(.fcn-root-folder-item, .fcn-root-folder-list-item)[data-fcn-rainbow] {
+    background: color-mix(in srgb, var(--fcn-rainbow) 4%, var(--background-primary));
+    box-shadow: none;
+}
+
+body.fcn-theme-colorful.fcn-rainbow-folders-disabled :is(.fcn-root-folder-item, .fcn-root-folder-list-item)[data-fcn-rainbow]:hover {
+    background: color-mix(in srgb, var(--fcn-rainbow) 10%, var(--background-primary));
+}
+
+body.fcn-theme-colorful.fcn-rainbow-folders-disabled :is(.fcn-root-folder-item, .fcn-root-folder-list-item)[data-fcn-rainbow].is-selected {
+    background: color-mix(in srgb, var(--fcn-rainbow) 20%, var(--background-primary));
+    box-shadow: none;
+}
+
+body.fcn-theme-colorful.fcn-rainbow-folders-disabled :is(.fcn-root-folder-item, .fcn-root-folder-list-item)[data-fcn-rainbow]:is(.is-keyboard-selected, .is-root-folder-keyboard-selected):not(.is-selected) {
+    background: color-mix(in srgb, var(--fcn-rainbow) 15%, var(--background-primary));
+    box-shadow: none;
+}
+
+body.fcn-theme-colorful.fcn-rainbow-folders-disabled .fcn-file-item[data-fcn-kind="folder"][data-fcn-rainbow] {
+    background: transparent;
+    box-shadow: none;
+}
+
+body.fcn-theme-colorful.fcn-rainbow-folders-disabled .fcn-file-item[data-fcn-kind="folder"][data-fcn-rainbow]:hover,
+body.fcn-theme-colorful.fcn-rainbow-folders-disabled .fcn-file-item[data-fcn-kind="folder"][data-fcn-rainbow].is-keyboard-selected {
+    background: var(--fcn-hover);
+}
+
+body.fcn-theme-colorful.fcn-rainbow-folders-disabled .fcn-file-item[data-fcn-kind="folder"][data-fcn-rainbow].is-selected {
+    background: var(--fcn-selected);
+}
+
+body.fcn-theme-colorful.fcn-rainbow-folders-disabled .fcn-column[data-fcn-rainbow] .fcn-column-header {
+    background: var(--fcn-header-bg);
+    box-shadow: none;
+}
+
 body.fcn-theme-colorful .fcn-calendar-title,
 body.fcn-theme-colorful .fcn-calendar-mode-switcher,
 body.fcn-theme-colorful .fcn-sort-select,
@@ -1733,12 +2021,12 @@ body.fcn-theme-colorful .fcn-sort-direction,
 body.fcn-theme-colorful .fcn-icon-button,
 body.fcn-theme-colorful .fcn-calendar-toggle {
     background: var(--fcn-surface-alt);
-    border: 1px solid color-mix(in srgb, var(--interactive-accent) 22%, var(--fcn-divider));
+    border: 1px solid color-mix(in srgb, var(--fcn-colorful-primary) 22%, var(--fcn-divider));
     border-radius: 8px;
 }
 
 body.fcn-theme-colorful :is(.fcn-icon-button, .fcn-sort-direction, .fcn-calendar-toolbar-button, .fcn-calendar-mode-button):hover {
-    background: color-mix(in srgb, var(--interactive-accent) 14%, var(--fcn-surface-alt));
+    background: color-mix(in srgb, var(--fcn-colorful-primary) 14%, var(--fcn-surface-alt));
 }
 
 body.fcn-theme-colorful .fcn-context-menu {
@@ -1746,13 +2034,13 @@ body.fcn-theme-colorful .fcn-context-menu {
      * cannot inherit the view's --fcn-surface or divider variables. */
     background-color: color-mix(
         in srgb,
-        color-mix(in srgb, var(--background-primary) 91%, #dbeafe) var(--fcn-context-menu-opacity, 70%),
+        color-mix(in srgb, var(--background-primary) 91%, var(--fcn-colorful-soft)) var(--fcn-context-menu-opacity, 70%),
         transparent
     );
-    border: 1px solid color-mix(in srgb, var(--interactive-accent) 29%, var(--background-modifier-border-hover));
+    border: 1px solid color-mix(in srgb, var(--fcn-colorful-primary) 29%, var(--background-modifier-border-hover));
     border-radius: 10px;
-    box-shadow: 0 10px 24px color-mix(in srgb, var(--interactive-accent) 16%, transparent),
-        inset 3px 0 0 #f97316;
+    box-shadow: 0 10px 24px color-mix(in srgb, var(--fcn-colorful-primary) 16%, transparent),
+        inset 3px 0 0 var(--fcn-colorful-warm);
 }
 
 body.fcn-theme-colorful .fcn-context-menu .menu-item {
@@ -1761,20 +2049,20 @@ body.fcn-theme-colorful .fcn-context-menu .menu-item {
 }
 
 body.fcn-theme-colorful .fcn-context-menu .menu-item:is(:hover, .fcn-context-menu-active) {
-    background: color-mix(in srgb, var(--interactive-accent) 15%, var(--background-secondary-alt));
+    background: color-mix(in srgb, var(--fcn-colorful-primary) 15%, var(--background-secondary-alt));
 }
 
 body.fcn-theme-colorful .fcn-context-menu .fcn-context-menu-filter {
-    color: var(--interactive-accent);
+    color: var(--fcn-colorful-primary);
 }
 
-body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-mon { --fcn-calendar-rainbow: #f97316; }
-body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-tue { --fcn-calendar-rainbow: #eab308; }
-body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-wed { --fcn-calendar-rainbow: #22c55e; }
-body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-thu { --fcn-calendar-rainbow: #06b6d4; }
-body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-fri { --fcn-calendar-rainbow: #3b82f6; }
-body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-sat { --fcn-calendar-rainbow: #8b5cf6; }
-body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-sun { --fcn-calendar-rainbow: #ec4899; }
+body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-mon { --fcn-calendar-rainbow: var(--fcn-colorful-0); }
+body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-tue { --fcn-calendar-rainbow: var(--fcn-colorful-1); }
+body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-wed { --fcn-calendar-rainbow: var(--fcn-colorful-2); }
+body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-thu { --fcn-calendar-rainbow: var(--fcn-colorful-3); }
+body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-fri { --fcn-calendar-rainbow: var(--fcn-colorful-4); }
+body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-sat { --fcn-calendar-rainbow: var(--fcn-colorful-5); }
+body.fcn-theme-colorful .fcn-calendar-content .fc .fc-day-sun { --fcn-calendar-rainbow: var(--fcn-colorful-6); }
 
 body.fcn-theme-colorful .fcn-calendar-content .fc .fcn-calendar-date-available .fc-daygrid-day-number {
     color: var(--text-normal);

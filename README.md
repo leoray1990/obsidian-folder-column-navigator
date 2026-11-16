@@ -160,9 +160,38 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 
 ### 主题
 
-插件内置三套视觉主题：简洁分格（默认）、彩色风格和手帐风格。可在插件的“设置 → 显示 → 主题”中立即切换。彩色风格会按目录路径稳定分配彩虹识别色，并同步用于顶部标签、目录列、分组和日历；手帐风格使用纸张、贴纸和手帐卡片的视觉语言，覆盖文件树、操作按钮、右键菜单和日历。安装并启用可选的 **Style Settings** 插件后，仍可从它的 **Folder Column Navigator → 主题风格** 切换主题。
+插件内置三套视觉主题：简洁分格（默认）、彩色风格和手帐风格。可在插件的“设置 → 显示 → 主题”中立即切换，插件保存的主题选择会在启动时优先恢复，不会被旧的 Style Settings class 覆盖。彩色风格会按目录路径稳定分配识别色，并同步用于顶部标签、目录列、分组、右键菜单和日历；可从彩虹、海盐、森野、晚霞四套协调配色中选择。手帐风格使用纸张、贴纸和手帐卡片的视觉语言，覆盖文件树、操作按钮、右键菜单和日历。
 
 ### 底部日历与日期文件
+
+#### 创建每日笔记
+
+在“设置 → 日历 → 创建每日笔记”中配置创建规则，默认启用：
+
+- 没有匹配文件的日期：点击后显示创建确认窗口。
+- 已有匹配文件的日期：普通点击沿用打开行为，`Cmd + 点击`（Windows/Linux 为 `Ctrl + 点击`）创建新笔记。
+- 独立日历下方的文件列表和匹配列表弹窗均提供“创建每日笔记”入口。
+- 确认窗口展示最终路径、日期和类型；名称可以修改，实时检测同名，确认后自动创建缺失目录并打开笔记，绝不覆盖已有文件。
+
+目录与名称支持两种共用规则的编辑方式：
+
+- **积木组合**：组件库分为“日期相关”“固定文字”“目录分隔符”。点击或拖入组件，通过拖拽或左右移动按钮排序；悬停组件可在右上角删除。目录分隔符显示为 `/`，与连接符、下划线、空格一样不可编辑；只有固定文字支持输入，且不能包含目录分隔符、模板括号或文件名非法字符，不提供文件/目录自动提示。日期组件可选择“选中日期”“周开始”“周结束”“今天（创建当天）”，格式只允许在同类日期单位内通过下拉切换；复杂格式在高级模板编辑。文件类型独立选择 Markdown、Canvas、Base，名称无需填写扩展名。
+- **高级模板**：自由编辑固定文字和日期变量，例如 `日记/{{date:YYYY}}/{{date:MM}}/{{weekStart:YYYY-MM-DD}}-{{weekEnd:YYYY-MM-DD}}`，名称为 `{{date:YYYY-MM-DD}}`。支持 `date`（选中日期）、`weekStart`、`weekEnd`、`today`（创建当天）；周一为周开始日，与日历一致，周数使用 ISO 周数 `WW`。
+
+提供平铺日期、按年月、按年月周三种预置方案，应用后可继续任意编辑。规则编辑器支持选择测试日期、实时预览完整路径，点击“保存创建规则”后生效；未保存的草稿不会改变创建行为。
+
+“基础目录”是独立的路径起点积木，只能出现在目录组合最左侧，不能重排或放入文件名；点击后可编辑仓库相对目录，并使用当前仓库目录补全。它与后续目录自动用 `/` 连接，清空或删除后从仓库根目录开始。基础目录不解析日期变量，高级模板模式也单独配置该前缀。旧规则中的完整固定前缀会自动转换为基础目录，生成路径不变。
+
+新建文件会关联日历所选日期，修改名称或选择 Canvas/Base 也能再次匹配到当天；该关联不受一般目录范围、类型及日期匹配开关限制，但仍遵循隐藏规则。文件重命名会同步关联，删除后清理。未指定正文模板时，Markdown 另外写入 `date` 属性。日期关联保存在当前仓库的插件配置中，不会自动同步到其他设备。
+
+#### 日记正文模板
+
+文件类型选择 Markdown 后，可在创建规则中设置“模板来源”和“模板文件”，默认不使用模板；输入模板路径时提供仓库 Markdown 文件提示，优先在所选模板系统配置的模板目录中查找。选择后点击“保存创建规则”生效，不会触发全库重新匹配。
+
+- **Obsidian 模板**：兼容核心 [Templates](https://help.obsidian.md/plugins/templates) 的 `{{title}}`、`{{date}}`、`{{time}}` 及日期/时间格式变量。标题使用确认弹窗中的最终名称；本插件为日记将 `date` 设为日历选中日，`time` 使用实际创建时间。默认格式读取已启用核心模板的设置，否则使用 `YYYY-MM-DD` / `HH:mm`；不要求启用核心模板即可使用标准变量。不会执行 Templater 脚本。
+- **Templater 模板**：必须安装并启用 [Templater](https://silentvoid13.github.io/Templater/)，使用其原生创建流程处理模板，而不是复制文本或再次执行覆盖命令。脚本、提示框、文件改名/移动等遵循 Templater 行为，最终按它返回的文件记录日历日期关联。`tp.date.now()` 等日期函数保持 Templater 原有语义，不会自动变成日历选中日；需要处理过去日期时，可从生成的文件标题解析日期。只应选择自己信任的模板，确认弹窗会显示脚本执行提示。集成核对了 2.26.0 的创建接口；缺少接口时明确提示，不会降级创建空白笔记。
+
+指定正文模板时，模板内容原样作为基础，不额外插入 `date` 属性，以免破坏已有 frontmatter；日历日期关联仍会保存。不使用模板时继续生成默认 `date` 属性。Canvas、Base 暂不应用 Markdown 正文模板，但保留所选模板配置。缺少模板、插件未启用、读取或执行失败都会提示，不覆盖已有文件。
 
 底部的“日历”栏默认收起；点击即可展开，也可再次点击收起。日历提供月视图与年视图、上一期/下一期导航和左侧周序号。
 
@@ -248,6 +277,7 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 | 一级目录置顶展示 | 将一级目录切换为视图顶部的标签区域 |
 | 顶部默认展示行数 | 限制顶部标签默认显示的行数，超出后可展开 |
 | 显示条目元信息 | 显示文件夹子项数量和文件类型缩写 |
+| 显示条目分割线 | 默认开启；可隐藏文件、目录条目之间的横线，保留列边界和分组标题 |
 | 一级目录名称字号 | 调整左侧模式下一级目录的字号 |
 | 文件树文件名字号 | 同时调整文件树中的目录和文件字号；顶部模式下也控制一级目录标签 |
 | 文件树名称左对齐 | 文件不显示图标时保留图标位置，使其与文件夹名对齐 |
@@ -255,9 +285,13 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 | 隐藏文件后缀名 | 只隐藏显示名称的后缀，不影响类型缩写设置 |
 | 隐藏规则 | 按 Glob 规则隐藏文件和目录 |
 | 文件列最小/最大宽度 | 限制拖拽文件列时的宽度范围 |
+| 点击目录在当前列打开 | 默认关闭；开启后从指定列开始，点击目录用其内容替换当前列，默认从第 2 列生效，并自动聚焦首个条目（不打开文件）；当前列内返回显示向上箭头，左方向键也可在当前列逐层返回并聚焦刚离开的目录；点击行为优先于纵向展开 |
+| 打开目录后的横向定位 | 默认“当前操作列靠左”；也可选择保留左侧 1 列、保留左侧 2 列、新展开列靠左、新展开列靠右、不自动滚动。点击与 Enter 共用，左侧一级目录栏保持可见；上下方向键、当前列打开和纵向展开不触发。旧版显式关闭的配置迁移为“不自动滚动” |
 | 文件夹图标 / 文件图标 | 分别控制文件夹、文件的图标样式；垂直展开时文件夹图标会显示打开/关闭状态 |
 | 分组 | 按指定属性分组；支持逗号分隔值或 YAML 数组，普通多值只取第一个；只要任一值命中归档名称就归入底部“归档”分组，没有任何有效分组信息时不显示分组标题，缺少属性的条目归入“其他”；“其他”固定排在普通分组之后、归档之前 |
-| 主题风格 | 在“显示 → 主题”中切换简洁分格、彩色风格和手帐风格；兼容 Style Settings |
+| 主题风格 | 在“显示 → 主题”中切换简洁分格、彩色风格和手帐风格；插件保存的选择在启动时优先恢复 |
+| 彩色配色 | 彩色风格下切换彩虹、海盐、森野、晚霞四套协调配色，覆盖顶部标签、文件树、分组、右键菜单和日历 |
+| 彩虹目录 | 默认开启；关闭后移除目录背景渐变和彩色装饰条，顶部标签和分组使用统一强调色，不影响主题与配色选择 |
 | 右键菜单背景不透明度 | 调整插件右键菜单的背景不透明度，范围 40%–100%，默认 70% |
 | 悬浮预览背景不透明度 | 调整文件和文件夹笔记预览窗口的背景不透明度，范围 40%–100%，默认 70% |
 | 启用悬浮预览 | 开关文件和目录的悬浮预览 |
@@ -269,10 +303,10 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 
 ## 隐私与数据
 
-- 不访问网络。
+- 插件本身不主动访问网络；若选择 Templater 模板，用户模板脚本可能通过第三方插件执行网络请求或文件操作，请只使用可信模板。
 - 不收集或上传任何笔记、文件名、使用行为或个人数据。
 - 只通过 Obsidian API 读取并在需要时执行你主动触发的本地文件操作。
-- 隐藏、排序、布局、宽度和导航配置保存在当前仓库的插件数据中。
+- 隐藏、排序、布局、宽度、导航、日记创建规则及日期与笔记路径的关联保存在当前仓库的插件数据中。
 
 ---
 
@@ -295,7 +329,7 @@ Folder Column Navigator adds a Finder-style multi-column navigator to Obsidian. 
 - Optional property-based grouping; configurable archive values are shown as a collapsed “归档” group at the bottom.
 - Dragging a file or folder onto “归档” adds the archive marker to its grouping property; dragging it onto another group updates the active group.
 - Configurable item metadata, icons with open/closed folder states, font sizes, folder-note priority, extension visibility, and Glob-based hiding.
-- Three built-in visual themes—Simple grid, Colorful, and Hand-account—are available in Settings → Display → Theme, with Style Settings retained as an optional alternative entry point. Colorful keeps a stable rainbow accent for each directory across navigation and columns; Hand-account uses a paper-and-sticker journal treatment across lists, menus, controls, groups, and the calendar.
+- Three built-in visual themes—Simple grid, Colorful, and Hand-account—are available in Settings → Display → Theme. The saved plugin selection takes precedence during startup. Colorful keeps a stable directory accent across navigation and columns, with four coordinated palettes: Rainbow, Ocean, Forest, and Sunset; Hand-account uses a paper-and-sticker journal treatment across lists, menus, controls, groups, and the calendar.
 - Create a same-name Markdown folder note from any folder's context menu, with duplicate detection.
 - Optional hover previews for files and folder notes, with a configurable delay.
 - Filterable context menus for files and folders.
@@ -307,7 +341,7 @@ Open **Folder Column Navigator** from the ribbon or command palette. Click a fol
 
 ## Privacy
 
-The plugin has no network access, telemetry, or data collection. It operates only on files in the current vault through the Obsidian API.
+The plugin itself makes no network requests and collects no telemetry. Settings and daily-note date/path associations are stored in the current vault's plugin data. Optional Templater templates run through that third-party plugin and can execute user scripts, including network requests and file operations; use trusted templates only.
 
 ## Third-party software
 

@@ -23,6 +23,7 @@ import { Calendar } from "@fullcalendar/core";
 import zhCnLocale from "@fullcalendar/core/locales/zh-cn";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
+import { DEFAULT_DAILY_NOTE, cleanDailyNoteConfig, renderDailyNoteEditor, CreateDailyNoteModal, type DailyNoteConfig } from "./daily-note";
 
 const VIEW_TYPE = "folder-column-navigator";
 const CALENDAR_VIEW_TYPE = "folder-column-navigator-calendar";
@@ -64,6 +65,7 @@ type FileIconStyle = "file" | "type" | "none";
 type CalendarDisplayMode = "month" | "week" | "year";
 type FileDateDisplay = "none" | "created" | "modified";
 type ThemeStyle = "simple" | "colorful" | "journal";
+type ColorfulPalette = "rainbow" | "ocean" | "forest" | "sunset";
 
 interface FolderColumnNavigatorSettings {
     hiddenRootPaths: string[];
@@ -84,6 +86,8 @@ interface FolderColumnNavigatorSettings {
     rootFolderFontSize: number;
     fileNameFontSize: number;
     wrapItemNames: boolean;
+    /** Keep row separators optional without changing column/group boundaries. */
+    showItemSeparators: boolean;
     wrapItemNameMaxLines: number;
     alignFileTreeNames: boolean;
     showFolderNotes: boolean;
@@ -102,6 +106,10 @@ interface FolderColumnNavigatorSettings {
     hideFileExtensions: boolean;
     /** Saved built-in visual theme, also applied to document-level menu portals. */
     themeStyle: ThemeStyle;
+    /** Coordinated accent set used when the colorful visual theme is active. */
+    colorfulPalette: ColorfulPalette;
+    /** Keep per-directory accents optional without changing the selected palette. */
+    rainbowFolders: boolean;
     navigationWidth: number;
     sortField: SortField;
     sortDirection: SortDirection;
@@ -115,6 +123,11 @@ interface FolderColumnNavigatorSettings {
     showRootFoldersAtTop: boolean;
     rootFolderVisibleRows: number;
     verticalTreeEnabled: boolean;
+    openFoldersInCurrentColumn: boolean;
+    /** Kept only to migrate the legacy toggle; new alignment takes precedence. */
+    scrollToNextColumnOnClick?: boolean;
+    columnClickAlignment: ColumnClickAlignment;
+    currentColumnStart: number;
     verticalTreeMaxColumns: number;
     verticalTreeCollapseSiblings: boolean;
     showItemMetadata: boolean;
@@ -135,6 +148,9 @@ interface FolderColumnNavigatorSettings {
     calendarMatchFilename: boolean;
     calendarFilenamePatterns: string[];
     calendarFileExtensions: string[];
+    dailyNote: DailyNoteConfig;
+    /** Vault paths mapped to their intended date, including renamed Canvas/Base notes. */
+    calendarCreatedNotes: Record<string, string>;
 }
 
 const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
@@ -152,6 +168,7 @@ const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
     rootFolderFontSize: DEFAULT_ROOT_FOLDER_FONT_SIZE,
     fileNameFontSize: DEFAULT_FILE_NAME_FONT_SIZE,
     wrapItemNames: false,
+    showItemSeparators: true,
     wrapItemNameMaxLines: DEFAULT_ITEM_NAME_WRAP_LINES,
     alignFileTreeNames: false,
     showFolderNotes: false,
@@ -169,6 +186,8 @@ const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
     fileDateDisplay: "none",
     hideFileExtensions: false,
     themeStyle: "simple",
+    colorfulPalette: "rainbow",
+    rainbowFolders: true,
     navigationWidth: DEFAULT_NAVIGATION_WIDTH,
     sortField: "name",
     sortDirection: "asc",
@@ -181,6 +200,9 @@ const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
     showRootFoldersAtTop: false,
     rootFolderVisibleRows: 2,
     verticalTreeEnabled: false,
+    openFoldersInCurrentColumn: false,
+    columnClickAlignment: "current-left",
+    currentColumnStart: 2,
     verticalTreeMaxColumns: DEFAULT_VERTICAL_TREE_COLUMNS,
     verticalTreeCollapseSiblings: false,
     showItemMetadata: true,
@@ -200,7 +222,9 @@ const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
     calendarFrontmatterKeys: ["updated", "created", "创建日期", "修改日期", "date"],
     calendarMatchFilename: true,
     calendarFilenamePatterns: ["YYYYMMDD", "YYYY年MM月DD日", "YYYY-MM-DD*"],
-    calendarFileExtensions: ["md", "canvas", "base"]
+    calendarFileExtensions: ["md", "canvas", "base"],
+    dailyNote: { ...DEFAULT_DAILY_NOTE },
+    calendarCreatedNotes: {}
 };
 
 /** CSS classes shared by the plugin settings UI and optional Style Settings support. */
@@ -209,6 +233,30 @@ const THEME_STYLE_CLASSES: Record<ThemeStyle, string> = {
     colorful: "fcn-theme-colorful",
     journal: "fcn-theme-cartoon"
 };
+
+const COLORFUL_PALETTE_LABELS: Record<ColorfulPalette, string> = {
+    rainbow: "彩虹",
+    ocean: "海盐",
+    forest: "森野",
+    sunset: "晚霞"
+};
+
+type ColumnClickAlignment = "current-left" | "keep-one" | "keep-two" | "next-left" | "next-right" | "none";
+const COLUMN_CLICK_ALIGNMENT_OPTIONS: Record<ColumnClickAlignment, string> = {
+    "current-left": "当前操作列靠左（默认）",
+    "keep-one": "保留左侧 1 列",
+    "keep-two": "保留左侧 2 列",
+    "next-left": "新展开列靠左",
+    "next-right": "新展开列靠右",
+    none: "不自动滚动"
+};
+function cleanColumnClickAlignment(value: unknown, legacyToggle?: boolean): ColumnClickAlignment {
+    if (typeof value === "string" && Object.prototype.hasOwnProperty.call(COLUMN_CLICK_ALIGNMENT_OPTIONS, value)) {
+        return value as ColumnClickAlignment;
+    }
+    // Honor an explicit old opt-out. Old opt-in adopts the new current-column default.
+    return legacyToggle === false ? "none" : "current-left";
+}
 
 interface NavigationEntry {
     path: string;
@@ -355,6 +403,10 @@ function isFileDateDisplay(value: unknown): value is FileDateDisplay {
 
 function isThemeStyle(value: unknown): value is ThemeStyle {
     return value === "simple" || value === "colorful" || value === "journal";
+}
+
+function isColorfulPalette(value: unknown): value is ColorfulPalette {
+    return value === "rainbow" || value === "ocean" || value === "forest" || value === "sunset";
 }
 
 function compareNames(a: { name: string }, b: { name: string }): number {
@@ -885,7 +937,8 @@ class DateMatchedFilesModal extends Modal {
         app: FolderColumnNavigatorPlugin["app"],
         private readonly date: Date,
         private readonly files: TFile[],
-        private readonly onChooseFile: (file: TFile) => Promise<void> | void
+        private readonly onChooseFile: (file: TFile) => Promise<void> | void,
+        private readonly onCreate?: () => void
     ) {
         super(app);
     }
@@ -899,6 +952,10 @@ class DateMatchedFilesModal extends Modal {
         });
         const list = this.contentEl.createDiv("fcn-date-match-modal-list");
         list.setAttribute("aria-label", `${formatCalendarDate(this.date)} 的匹配文件`);
+        if (this.onCreate) {
+            const button = list.createEl("button", { text: "+ 创建每日笔记", cls: "fcn-date-match-modal-item" });
+            button.addEventListener("click", () => { this.close(); this.onCreate?.(); });
+        }
         this.files.forEach(file => {
             const row = list.createEl("button", {
                 cls: "fcn-date-match-modal-item",
@@ -963,16 +1020,19 @@ export default class FolderColumnNavigator extends Plugin {
     settings: FolderColumnNavigatorSettings = { ...DEFAULT_SETTINGS };
     private readonly views = new Set<FolderColumnNavigatorView>();
     private readonly hiddenPatternMatchers = new Map<string, RegExp>();
+    private readonly themeStyleReapplyTimers = new Set<number>();
     private settingsTab: FolderColumnNavigatorSettingTab | null = null;
+    private vaultRefreshTimer: number | null = null;
 
     async onload(): Promise<void> {
         await this.loadSettings();
 
-        // Style Settings reads the @settings block from this plugin's CSS.
-        // Ask it to re-parse after the plugin is loaded so the theme class is
-        // available even when Style Settings was enabled after this plugin.
+        // Style Settings may restore an older class after this plugin loads.
+        // Re-apply the saved plugin choice through the initial layout work so
+        // the plugin settings remain the source of truth on every startup.
         this.app.workspace.trigger("parse-style-settings");
         this.applyThemeStyle();
+        this.scheduleThemeStyleReapply();
 
         this.registerView(VIEW_TYPE, leaf => {
             const view = new FolderColumnNavigatorView(leaf, this);
@@ -989,12 +1049,9 @@ export default class FolderColumnNavigator extends Plugin {
             defaultMod: false
         });
 
-        this.registerEvent(this.app.vault.on("create", () => this.refreshViews()));
-        this.registerEvent(this.app.vault.on("delete", () => this.refreshViews()));
         this.registerEvent(this.app.vault.on("rename", (item, oldPath) => {
             void this.handleItemRename(item, oldPath);
         }));
-        this.registerEvent(this.app.metadataCache.on("resolved", () => this.refreshViews()));
 
         this.addRibbonIcon("folder-tree", "打开目录文件列表", () => {
             void this.activateView();
@@ -1016,10 +1073,24 @@ export default class FolderColumnNavigator extends Plugin {
         });
         this.settingsTab = new FolderColumnNavigatorSettingTab(this.app, this);
         this.addSettingTab(this.settingsTab);
-        window.setTimeout(() => this.settingsTab?.update(), 0);
+        // Obsidian emits create for every discovered file during vault load.
+        // Do not subscribe to that startup stream; refresh once after layout.
+        this.app.workspace.onLayoutReady(() => {
+            if (!this.settingsTab) return;
+            this.registerEvent(this.app.vault.on("create", () => this.scheduleVaultRefresh()));
+            this.registerEvent(this.app.vault.on("delete", () => this.scheduleVaultRefresh()));
+            this.registerEvent(this.app.metadataCache.on("resolved", () => this.scheduleVaultRefresh()));
+            this.scheduleVaultRefresh();
+        });
     }
 
     onunload(): void {
+        if (this.vaultRefreshTimer !== null) {
+            window.clearTimeout(this.vaultRefreshTimer);
+            this.vaultRefreshTimer = null;
+        }
+        this.themeStyleReapplyTimers.forEach(timer => window.clearTimeout(timer));
+        this.themeStyleReapplyTimers.clear();
         this.views.clear();
         this.settingsTab = null;
     }
@@ -1059,6 +1130,9 @@ export default class FolderColumnNavigator extends Plugin {
             wrapItemNames: typeof saved?.wrapItemNames === "boolean"
                 ? saved.wrapItemNames
                 : DEFAULT_SETTINGS.wrapItemNames,
+            showItemSeparators: typeof saved?.showItemSeparators === "boolean"
+                ? saved.showItemSeparators
+                : DEFAULT_SETTINGS.showItemSeparators,
             wrapItemNameMaxLines: clampItemNameWrapLines(saved?.wrapItemNameMaxLines),
             alignFileTreeNames: typeof saved?.alignFileTreeNames === "boolean"
                 ? saved.alignFileTreeNames
@@ -1102,6 +1176,12 @@ export default class FolderColumnNavigator extends Plugin {
             themeStyle: isThemeStyle(saved?.themeStyle)
                 ? saved.themeStyle
                 : DEFAULT_SETTINGS.themeStyle,
+            colorfulPalette: isColorfulPalette(saved?.colorfulPalette)
+                ? saved.colorfulPalette
+                : DEFAULT_SETTINGS.colorfulPalette,
+            rainbowFolders: typeof saved?.rainbowFolders === "boolean"
+                ? saved.rainbowFolders
+                : DEFAULT_SETTINGS.rainbowFolders,
             navigationWidth: clampNavigationWidth(
                 typeof saved?.navigationWidth === "number" ? saved.navigationWidth : DEFAULT_NAVIGATION_WIDTH
             ),
@@ -1128,6 +1208,10 @@ export default class FolderColumnNavigator extends Plugin {
             verticalTreeEnabled: typeof saved?.verticalTreeEnabled === "boolean"
                 ? saved.verticalTreeEnabled
                 : DEFAULT_SETTINGS.verticalTreeEnabled,
+            openFoldersInCurrentColumn: saved?.openFoldersInCurrentColumn === true,
+            columnClickAlignment: cleanColumnClickAlignment(saved?.columnClickAlignment, saved?.scrollToNextColumnOnClick),
+            currentColumnStart: typeof saved?.currentColumnStart === "number"
+                ? Math.max(1, Math.min(8, Math.round(saved.currentColumnStart) || 2)) : 2,
             verticalTreeMaxColumns: clampVerticalTreeColumns(saved?.verticalTreeMaxColumns),
             verticalTreeCollapseSiblings: typeof saved?.verticalTreeCollapseSiblings === "boolean"
                 ? saved.verticalTreeCollapseSiblings
@@ -1171,7 +1255,10 @@ export default class FolderColumnNavigator extends Plugin {
                 ? saved.calendarMatchFilename
                 : DEFAULT_SETTINGS.calendarMatchFilename,
             calendarFilenamePatterns: cleanCalendarRuleList(saved?.calendarFilenamePatterns),
-            calendarFileExtensions: cleanFileExtensionList(saved?.calendarFileExtensions)
+            calendarFileExtensions: cleanFileExtensionList(saved?.calendarFileExtensions),
+            dailyNote: cleanDailyNoteConfig(saved?.dailyNote),
+            calendarCreatedNotes: Object.fromEntries(Object.entries(saved?.calendarCreatedNotes ?? {})
+                .filter(([, date]) => typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date)))
         };
 
         const rootFolderPaths = new Set(this.getRootFolders().map(folder => folder.path));
@@ -1200,6 +1287,18 @@ export default class FolderColumnNavigator extends Plugin {
         this.refreshViews();
     }
 
+    /** Creation templates do not change matching rules. Never rescan the vault
+     * or rebuild the active editor just to save its draft. */
+    async saveDailyNoteConfig(config: DailyNoteConfig): Promise<void> {
+        const previous = this.settings.dailyNote;
+        this.settings.dailyNote = { ...config };
+        try { await this.saveData(this.settings); }
+        catch (error) { this.settings.dailyNote = previous; throw error; }
+        if (previous.enabled !== config.enabled) {
+            this.views.forEach(view => view.refreshDailyNoteCreationUi());
+        }
+    }
+
     /**
      * Themes need a document-level class because context menus are rendered in
      * Obsidian's portal outside the individual view container.
@@ -1207,7 +1306,27 @@ export default class FolderColumnNavigator extends Plugin {
     applyThemeStyle(): void {
         document.body.classList.remove(...Object.values(THEME_STYLE_CLASSES));
         document.body.classList.add(THEME_STYLE_CLASSES[this.settings.themeStyle]);
+        document.body.dataset.fcnColorfulPalette = this.settings.colorfulPalette;
+        document.body.classList.toggle("fcn-rainbow-folders-disabled", !this.settings.rainbowFolders);
         this.applyOverlayOpacity();
+    }
+
+    /**
+     * Style Settings restores classes asynchronously during startup. Reapplying
+     * the saved plugin choice for that short window prevents a stale external
+     * class from changing the visible theme after the settings page reports a
+     * different selection.
+     */
+    private scheduleThemeStyleReapply(): void {
+        this.themeStyleReapplyTimers.forEach(timer => window.clearTimeout(timer));
+        this.themeStyleReapplyTimers.clear();
+        [0, 100, 450, 1000, 2000].forEach(delay => {
+            const timer = window.setTimeout(() => {
+                this.themeStyleReapplyTimers.delete(timer);
+                this.applyThemeStyle();
+            }, delay);
+            this.themeStyleReapplyTimers.add(timer);
+        });
     }
 
     /**
@@ -1224,6 +1343,13 @@ export default class FolderColumnNavigator extends Plugin {
 
     async updateThemeStyle(themeStyle: ThemeStyle): Promise<void> {
         this.settings.themeStyle = themeStyle;
+        this.applyThemeStyle();
+        this.scheduleThemeStyleReapply();
+        await this.saveSettings();
+    }
+
+    async updateColorfulPalette(palette: ColorfulPalette): Promise<void> {
+        this.settings.colorfulPalette = palette;
         this.applyThemeStyle();
         await this.saveSettings();
     }
@@ -1270,6 +1396,8 @@ export default class FolderColumnNavigator extends Plugin {
             nextOrders[remapPath(parentPath)] = paths.map(remapPath);
         });
         this.settings.customItemOrders = nextOrders;
+        this.settings.calendarCreatedNotes = Object.fromEntries(Object.entries(this.settings.calendarCreatedNotes)
+            .map(([path, date]) => [remapPath(path), date]));
         await this.saveData(this.settings);
         this.refreshViews();
     }
@@ -1312,16 +1440,7 @@ export default class FolderColumnNavigator extends Plugin {
     }
 
     getRootFolders(): TFolder[] {
-        const foldersByPath = new Map<string, TFolder>();
-        [
-            ...this.app.vault.getRoot().children,
-            ...this.app.vault.getAllLoadedFiles()
-        ].forEach(child => {
-            if (child instanceof TFolder && child.path !== ROOT_PATH && !child.path.includes("/")) {
-                foldersByPath.set(child.path, child);
-            }
-        });
-        const folders = [...foldersByPath.values()].sort(compareNames);
+        const folders = this.app.vault.getRoot().children.filter((child): child is TFolder => child instanceof TFolder);
         const order = new Map(this.settings.rootFolderOrder.map((path, index) => [path, index]));
         return folders.sort((a, b) => {
             const aIndex = order.get(a.path);
@@ -1507,7 +1626,26 @@ export default class FolderColumnNavigator extends Plugin {
 
     refreshViews(): void {
         this.views.forEach(view => view.refresh());
-        this.settingsTab?.update();
+        this.settingsTab?.updateIfVisible();
+    }
+
+    /** Coalesce post-startup filesystem and metadata bursts into one refresh. */
+    private scheduleVaultRefresh(): void {
+        if (this.vaultRefreshTimer !== null) window.clearTimeout(this.vaultRefreshTimer);
+        this.vaultRefreshTimer = window.setTimeout(() => {
+            this.vaultRefreshTimer = null;
+            // Remove deleted daily-note links once per event batch, not once per
+            // file. Otherwise a future unrelated file at the same path could
+            // inherit an obsolete calendar association.
+            const notes = this.settings.calendarCreatedNotes;
+            const retained = Object.fromEntries(Object.entries(notes).filter(([path]) =>
+                this.app.vault.getAbstractFileByPath(path) instanceof TFile));
+            if (Object.keys(notes).length !== Object.keys(retained).length) {
+                this.settings.calendarCreatedNotes = retained;
+                void this.saveData(this.settings).catch(error => console.error("Unable to save daily-note associations", error));
+            }
+            this.refreshViews();
+        }, 150);
     }
 
     removeView(view: FolderColumnNavigatorView): void {
@@ -1633,6 +1771,8 @@ class FolderColumnNavigatorView extends ItemView {
     private hoverPreviewFallbackTimer: number | null = null;
     private hoverPreviewCloseTimer: number | null = null;
     private hoverPreviewToken = 0;
+    /** File represented by the active native/fallback preview, including loading. */
+    private hoverPreviewFilePath: string | null = null;
 
     constructor(
         leaf: WorkspaceLeaf,
@@ -1718,6 +1858,18 @@ class FolderColumnNavigatorView extends ItemView {
         });
         this.sortDirectionButton.addEventListener("click", () => void this.plugin.toggleSortDirection());
         this.columnsEl = contentPane.createDiv("fcn-columns");
+        // Use the stable column container: selecting a row rebuilds its column.
+        // Consume the second click so a double-click does not toggle a folder twice.
+        this.columnsEl.addEventListener("click", event => {
+            if (event.detail !== 2) return;
+            const target = event.targetNode?.instanceOf(HTMLElement) ? event.targetNode : null;
+            if (!target || target.closest("button, input, select, .fcn-column-resize-divider")) return;
+            const column = target.closest<HTMLElement>(".fcn-column");
+            if (!column) return;
+            event.preventDefault();
+            event.stopPropagation();
+            this.revealColumnHorizontally(column);
+        }, true);
 
         this.createCalendarPane(layout);
 
@@ -1794,6 +1946,7 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     refresh(): void {
+        this.containerEl.toggleClass("fcn-hide-item-separators", !this.plugin.settings.showItemSeparators);
         if (!this.plugin.settings.enableHoverPreview) {
             this.closeHoverPreview();
         }
@@ -1950,7 +2103,7 @@ class FolderColumnNavigatorView extends ItemView {
             fixedWeekCount: true,
             showNonCurrentDates: false,
             height: "auto",
-            dateClick: info => this.openCalendarDate(info.date),
+            dateClick: info => this.openCalendarDate(info.date, info.jsEvent.metaKey || info.jsEvent.ctrlKey),
             datesSet: () => this.refreshCalendarDateMatches()
         });
         this.calendar.render();
@@ -2043,8 +2196,25 @@ class FolderColumnNavigatorView extends ItemView {
         }
     }
 
-    private openCalendarDate(date: Date): void {
+    private createCalendarNote(date: Date): void {
+        if (!this.plugin.settings.dailyNote.enabled) return;
+        new CreateDailyNoteModal(this.plugin.app, this.plugin.settings.dailyNote, date, async file => {
+            this.plugin.settings.calendarCreatedNotes[file.path] = formatCalendarDate(date);
+            this.calendarSelectedDateKey = formatCalendarDate(date);
+            await this.plugin.saveSettings();
+            await this.plugin.app.workspace.getLeaf(false).openFile(file, { active: true });
+        }).open();
+    }
+
+    private openCalendarDate(date: Date, create = false): void {
         const files = this.calendarDateMatches.get(formatCalendarDate(date)) ?? [];
+        this.calendarSelectedDateKey = formatCalendarDate(date);
+        this.updateCalendarDateCells();
+        this.renderCalendarMatchedFiles();
+        if (this.plugin.settings.dailyNote.enabled && (create || files.length === 0)) {
+            this.createCalendarNote(date);
+            return;
+        }
         if (files.length === 0) {
             return;
         }
@@ -2061,7 +2231,8 @@ class FolderColumnNavigatorView extends ItemView {
             void this.openCalendarMatchedFile(files[0]);
             return;
         }
-        new DateMatchedFilesModal(this.plugin.app, date, files, file => this.openCalendarMatchedFile(file)).open();
+        new DateMatchedFilesModal(this.plugin.app, date, files, file => this.openCalendarMatchedFile(file),
+            this.plugin.settings.dailyNote.enabled ? () => this.createCalendarNote(date) : undefined).open();
     }
 
     private async openCalendarMatchedFile(file: TFile): Promise<void> {
@@ -2096,11 +2267,11 @@ class FolderColumnNavigatorView extends ItemView {
         this.calendarDateMatches = this.buildCalendarDateMatches(start, end);
         if (this.isStandaloneCalendar && !this.calendarSelectedDateKey) {
             const todayKey = formatCalendarDate(new Date());
-            if (this.calendarDateMatches.has(todayKey)) {
+            if (this.calendarDateMatches.has(todayKey) || this.plugin.settings.dailyNote.enabled) {
                 this.calendarSelectedDateKey = todayKey;
             }
         }
-        if (this.calendarSelectedDateKey && !this.calendarDateMatches.has(this.calendarSelectedDateKey)) {
+        if (!this.plugin.settings.dailyNote.enabled && this.calendarSelectedDateKey && !this.calendarDateMatches.has(this.calendarSelectedDateKey)) {
             this.calendarSelectedDateKey = null;
         }
         this.updateCalendarDateCells();
@@ -2116,6 +2287,9 @@ class FolderColumnNavigatorView extends ItemView {
     private buildCalendarDateMatches(start: Date, end: Date): Map<string, TFile[]> {
         const settings = this.plugin.settings;
         const matches = new Map<string, TFile[]>();
+        // Multiple rules can all match one file. A linear search in the date's
+        // result array makes mass-import dates quadratic on large vaults.
+        const seen = new Map<string, Set<string>>();
         const startKey = formatCalendarDate(start);
         const endKey = formatCalendarDate(end);
         const addMatch = (key: string, file: TFile): void => {
@@ -2123,7 +2297,10 @@ class FolderColumnNavigatorView extends ItemView {
                 return;
             }
             const files = matches.get(key) ?? [];
-            if (!files.some(candidate => candidate.path === file.path)) {
+            const paths = seen.get(key) ?? new Set<string>();
+            if (!paths.has(file.path)) {
+                paths.add(file.path);
+                seen.set(key, paths);
                 files.push(file);
                 matches.set(key, files);
             }
@@ -2156,11 +2333,15 @@ class FolderColumnNavigatorView extends ItemView {
                 }
             });
 
-        matches.forEach(files => files.sort((left, right) => left.path.localeCompare(
-            right.path,
-            undefined,
-            { numeric: true, sensitivity: "base" }
-        )));
+        // Explicit creation associations remain discoverable even if the name,
+        // type, or directory differs from the general calendar matching rules.
+        Object.entries(settings.calendarCreatedNotes).forEach(([path, key]) => {
+            const file = this.plugin.app.vault.getAbstractFileByPath(path);
+            if (file instanceof TFile && !this.plugin.isHiddenByPattern(path)) addMatch(key, file);
+        });
+
+        const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+        matches.forEach(files => files.sort((left, right) => collator.compare(left.path, right.path)));
         return matches;
     }
 
@@ -2176,23 +2357,51 @@ class FolderColumnNavigatorView extends ItemView {
             cell.toggleClass("fcn-calendar-date-single", matchCount === 1);
             cell.toggleClass("fcn-calendar-date-multiple", matchCount > 1);
             cell.toggleClass("fcn-calendar-date-selected", dateKey === this.calendarSelectedDateKey);
-            cell.toggleClass("fcn-calendar-date-unavailable", !hasMatches);
+            cell.toggleClass("fcn-calendar-date-unavailable", !hasMatches && !this.plugin.settings.dailyNote.enabled);
+            cell.toggleClass("fcn-calendar-date-creatable", !hasMatches && this.plugin.settings.dailyNote.enabled);
             cell.dataset.fcnMatchCount = hasMatches ? String(matchCount) : "";
-            cell.setAttribute("aria-disabled", String(!hasMatches));
+            cell.setAttribute("aria-disabled", String(!hasMatches && !this.plugin.settings.dailyNote.enabled));
             if (dateKey === this.calendarSelectedDateKey) {
                 cell.setAttribute("aria-current", "date");
             } else {
                 cell.removeAttribute("aria-current");
             }
-            cell.setAttribute("title", hasMatches ? `匹配 ${matchCount} 个文件` : "没有匹配文件");
+            cell.setAttribute("title", hasMatches ? `匹配 ${matchCount} 个文件${this.plugin.settings.dailyNote.enabled ? "（Cmd/Ctrl + 点击创建）" : ""}` :
+                this.plugin.settings.dailyNote.enabled ? "点击创建每日笔记" : "没有匹配文件");
             const dayNumber = cell.querySelector<HTMLElement>(".fc-daygrid-day-number");
             dayNumber?.setAttribute(
                 "aria-label",
-                hasMatches ? `${dateKey}，匹配 ${matchCount} 个文件` : `${dateKey}，没有匹配文件`
+                hasMatches ? `${dateKey}，匹配 ${matchCount} 个文件` :
+                    `${dateKey}，${this.plugin.settings.dailyNote.enabled ? "点击创建每日笔记" : "没有匹配文件"}`
             );
             if (dayNumber) {
                 dayNumber.dataset.fcnMatchCount = hasMatches ? String(matchCount) : "";
             }
+        });
+    }
+
+    /** Update only the creation affordance, not the (potentially huge) result list. */
+    refreshDailyNoteCreationUi(): void {
+        this.updateCalendarDateCells();
+        this.updateCalendarCreateAction();
+    }
+
+    private updateCalendarCreateAction(): void {
+        const list = this.calendarResultsEl?.querySelector<HTMLElement>(".fcn-calendar-results-list");
+        if (!list) return;
+        const existing = list.querySelector<HTMLElement>(".fcn-calendar-create-note");
+        if (!this.plugin.settings.dailyNote.enabled || !this.calendarSelectedDateKey) {
+            existing?.remove();
+            return;
+        }
+        if (existing) return;
+        const create = list.createEl("button", { text: "+ 创建每日笔记", cls: "fcn-file-item fcn-calendar-results-item fcn-calendar-create-note" });
+        list.prepend(create);
+        create.addEventListener("click", () => {
+            const key = this.calendarSelectedDateKey;
+            if (!key) return;
+            const [year, month, day] = key.split("-").map(Number);
+            this.createCalendarNote(new Date(year, month - 1, day));
         });
     }
 
@@ -2206,7 +2415,7 @@ class FolderColumnNavigatorView extends ItemView {
             return;
         }
         const files = this.calendarDateMatches.get(this.calendarSelectedDateKey) ?? [];
-        if (files.length === 0) {
+        if (files.length === 0 && !this.plugin.settings.dailyNote.enabled) {
             this.calendarSelectedDateKey = null;
             this.calendarResultsEl.removeClass("is-visible");
             return;
@@ -2215,6 +2424,7 @@ class FolderColumnNavigatorView extends ItemView {
         header.createSpan({ text: this.calendarSelectedDateKey, cls: "fcn-calendar-results-date" });
         header.createSpan({ text: `${files.length} 个文件`, cls: "fcn-calendar-results-count" });
         const list = this.calendarResultsEl.createDiv("fcn-calendar-results-list");
+        this.updateCalendarCreateAction();
         files.forEach(file => {
             const row = list.createEl("button", {
                 cls: "fcn-file-item fcn-calendar-results-item",
@@ -2519,7 +2729,7 @@ class FolderColumnNavigatorView extends ItemView {
             this.bindHoverPreview(row, this.getFolderNote(folder, true));
         }
 
-        row.addEventListener("click", () => this.selectNavigationPath(entry.path));
+        row.addEventListener("click", () => this.selectNavigationPath(entry.path, false));
         row.addEventListener("contextmenu", event => {
             event.preventDefault();
             this.markKeyboardSelection(row);
@@ -2978,11 +3188,35 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private renderColumns(): void {
+        const scrollLeft = this.columnsEl.scrollLeft;
+        // Rebuilding rows after selecting a file must not reset existing columns
+        // to the top. Key by directory, not index: a new directory starts at zero.
+        const scrollPositions = new Map<string, number>();
+        this.columnsEl.querySelectorAll<HTMLElement>(".fcn-column").forEach(column => {
+            const list = column.querySelector<HTMLElement>(".fcn-column-list");
+            if (list && column.dataset.fcnPath !== undefined) {
+                scrollPositions.set(column.dataset.fcnPath, list.scrollTop);
+            }
+        });
         this.columnsEl.empty();
         const columnCount = this.getRenderedColumnCount();
         this.columnPaths.slice(0, columnCount).forEach((path, columnIndex) => this.renderColumn(path, columnIndex));
+        this.columnsEl.querySelectorAll<HTMLElement>(".fcn-column").forEach(column => {
+            const list = column.querySelector<HTMLElement>(".fcn-column-list");
+            const scrollTop = scrollPositions.get(column.dataset.fcnPath ?? "");
+            if (list && scrollTop !== undefined) {
+                list.scrollTop = scrollTop;
+            }
+        });
         this.activeColumnIndex = Math.max(0, Math.min(this.activeColumnIndex, columnCount - 1));
-        window.requestAnimationFrame(() => this.ensureColumnVisible(this.activeColumnIndex));
+        this.columnsEl.toggleClass("fcn-align-next-column", !["none", "next-right"].includes(this.plugin.settings.columnClickAlignment));
+        const lastColumn = this.columnsEl.querySelector<HTMLElement>(".fcn-column:last-child");
+        this.columnsEl.setCssProps({
+            "--fcn-last-column-width": `${lastColumn?.getBoundingClientRect().width ?? 0}px`
+        });
+        this.columnsEl.scrollLeft = scrollLeft;
+        // Rendering is not navigation: only explicit keyboard/reveal actions
+        // should scroll a column into view, never a mouse selection refresh.
     }
 
     private getRenderedColumnCount(): number {
@@ -3049,8 +3283,10 @@ class FolderColumnNavigatorView extends ItemView {
         divider.setAttribute("aria-label", `调整“${folder.name}”列宽度`);
         divider.addEventListener("pointerdown", event => this.startColumnResize(event, path));
 
-        if (columnIndex > 0) {
-            this.addSpecialListItem(list, columnIndex, "返回上一级", "arrow-left", () => {
+        if (columnIndex > 0 || path !== this.navigationBasePath) {
+            this.addSpecialListItem(list, columnIndex, "返回上一级",
+                this.canReturnWithinCurrentColumn(columnIndex) ? "arrow-up" : "arrow-left", () => {
+                if (this.returnWithinCurrentColumn(columnIndex)) return;
                 if (this.collapseVerticalTreeLevel(columnIndex)) {
                     return;
                 }
@@ -3516,7 +3752,7 @@ class FolderColumnNavigatorView extends ItemView {
             if (this.handleItemSelectionClick(row, folder, event)) {
                 return;
             }
-            this.handleFolderClick(folder, columnIndex);
+            this.activateFolder(folder, columnIndex);
         });
         row.addEventListener("contextmenu", event => {
             event.preventDefault();
@@ -3532,15 +3768,30 @@ class FolderColumnNavigatorView extends ItemView {
         });
     }
 
-    private handleFolderClick(folder: TFolder, columnIndex: number): void {
-        if (!this.isVerticalTreeColumn(columnIndex) && !this.willOpenIntoVerticalTree(columnIndex)) {
-            this.openFolderColumn(folder.path, columnIndex);
+    /** Mouse click and Enter share activation rules; ArrowRight remains explicit expansion. */
+    private activateFolder(folder: TFolder, columnIndex: number): void {
+        if (this.plugin.settings.openFoldersInCurrentColumn &&
+            columnIndex + 1 >= this.plugin.settings.currentColumnStart) {
+            this.columnPaths = [...this.columnPaths.slice(0, columnIndex), folder.path];
+            this.activeColumnIndex = columnIndex;
+            this.selectedFilePath = null;
+            this.refresh();
+            // Select the first real entry without opening it or moving the viewport.
+            this.focusFirstColumnItem(columnIndex, false);
             return;
         }
-        this.toggleVerticalTreeFolder(folder.path, columnIndex);
+        if (!this.isVerticalTreeColumn(columnIndex) && !this.willOpenIntoVerticalTree(columnIndex)) {
+            this.openFolderColumn(folder.path, columnIndex, false, false);
+            // Activation selects the new column's first real row, while its
+            // optional horizontal alignment remains controlled by the setting.
+            this.focusFirstColumnItem(columnIndex + 1, false);
+            this.alignColumnsAfterActivation(columnIndex);
+            return;
+        }
+        this.toggleVerticalTreeFolder(folder.path, columnIndex, false);
     }
 
-    private toggleVerticalTreeFolder(path: string, columnIndex: number): void {
+    private toggleVerticalTreeFolder(path: string, columnIndex: number, revealFocus = true): void {
         if (this.verticalTreeExpandedPaths.has(path)) {
             this.removeVerticalTreeExpansion(path);
             const pathIndex = this.columnPaths.indexOf(path);
@@ -3557,7 +3808,26 @@ class FolderColumnNavigatorView extends ItemView {
         this.selectedFilePath = null;
         this.activeColumnIndex = columnIndex;
         this.refresh();
-        this.focusFolderPath(path, columnIndex);
+        this.focusFolderPath(path, columnIndex, revealFocus);
+    }
+
+    /** Used only by click/Enter activation, never up/down folder preview.
+     * "Keep" describes the number of columns retained before the clicked one,
+     * not filesystem ancestry (same-column browsing may have skipped ancestors). */
+    private alignColumnsAfterActivation(columnIndex: number): void {
+        const mode = this.plugin.settings.columnClickAlignment;
+        if (mode === "none") return;
+        const offset = mode === "keep-one" ? -1 : mode === "keep-two" ? -2 :
+            mode === "next-left" || mode === "next-right" ? 1 : 0;
+        const targetIndex = Math.max(0, columnIndex + offset);
+        const target = this.columnsEl.querySelector<HTMLElement>(`.fcn-column[data-fcn-column="${targetIndex}"]`);
+        if (!target) return;
+        const viewport = this.columnsEl.getBoundingClientRect();
+        const rect = target.getBoundingClientRect();
+        const viewportLeft = viewport.left + this.columnsEl.clientLeft;
+        const delta = mode === "next-right" ? rect.right - viewportLeft - this.columnsEl.clientWidth : rect.left - viewportLeft;
+        // Only the file-list viewport scrolls, so side navigation stays fixed.
+        this.columnsEl.scrollTo({ left: Math.max(0, this.columnsEl.scrollLeft + delta), behavior: "smooth" });
     }
 
     private removeVerticalTreeExpansion(path: string): void {
@@ -3629,10 +3899,14 @@ class FolderColumnNavigatorView extends ItemView {
             if (this.handleItemSelectionClick(row, file, event)) {
                 return;
             }
+            // A file cannot own the column to its right. When it replaces an
+            // opened sibling folder, remove that folder's child column so the
+            // folder loses both its selection state and expanded content.
+            this.collapseColumnsAfterNonFolderFocus(columnIndex, parentPath);
             this.selectedFilePath = file.path;
             this.activeColumnIndex = columnIndex;
             this.renderColumns();
-            void this.openFile(file);
+            void this.openFile(file, false, false);
         });
         row.addEventListener("contextmenu", event => {
             event.preventDefault();
@@ -3793,13 +4067,34 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private scheduleHoverPreview(row: HTMLElement, file: TFile, event: MouseEvent): void {
-        this.closeHoverPreview();
-        const token = ++this.hoverPreviewToken;
+        // Crossing a sibling on the way to the preview must not destroy it.
+        // Replace the current preview only after a deliberate hover delay.
+        if (this.hoverPreviewTimer !== null) {
+            window.clearTimeout(this.hoverPreviewTimer);
+            this.hoverPreviewTimer = null;
+        }
+        if (this.hoverPreviewCloseTimer !== null) {
+            window.clearTimeout(this.hoverPreviewCloseTimer);
+            this.hoverPreviewCloseTimer = null;
+        }
+        // Re-entering the same file must keep both rendered content and its
+        // scroll position. A detached native popover is not reusable.
+        if (this.hoverPreviewFilePath === file.path && (
+            this.hoverParent.hoverPopover?.hoverEl.isConnected ||
+            this.hoverPreviewFallbackTimer !== null
+        )) {
+            return;
+        }
+        let token = this.hoverPreviewToken;
         this.hoverPreviewTimer = window.setTimeout(() => {
             this.hoverPreviewTimer = null;
-            if (token !== this.hoverPreviewToken || !row.matches(":hover")) {
+            if (token !== this.hoverPreviewToken || !row.matches(":hover") ||
+                this.hoverParent.hoverPopover?.hoverEl.matches(":hover")) {
                 return;
             }
+            this.closeHoverPreview();
+            token = this.hoverPreviewToken;
+            this.hoverPreviewFilePath = file.path;
             this.plugin.app.workspace.trigger("hover-link", {
                 event,
                 source: "folder-column-navigator",
@@ -3810,6 +4105,10 @@ class FolderColumnNavigatorView extends ItemView {
             });
             this.hoverPreviewFallbackTimer = window.setTimeout(() => {
                 this.hoverPreviewFallbackTimer = null;
+                const nativePopover = this.hoverParent.hoverPopover;
+                if (token === this.hoverPreviewToken && nativePopover) {
+                    this.bindPreviewPointerRetention(nativePopover);
+                }
                 if (token === this.hoverPreviewToken && row.matches(":hover") && !this.hoverParent.hoverPopover) {
                     void this.openHoverPreview(row, file, token);
                 }
@@ -3819,6 +4118,7 @@ class FolderColumnNavigatorView extends ItemView {
 
     private closeHoverPreview(): void {
         this.hoverPreviewToken += 1;
+        this.hoverPreviewFilePath = null;
         if (this.hoverPreviewTimer !== null) {
             window.clearTimeout(this.hoverPreviewTimer);
             this.hoverPreviewTimer = null;
@@ -3859,13 +4159,7 @@ class FolderColumnNavigatorView extends ItemView {
         this.hoverPopover = popover;
         this.hoverParent.hoverPopover = popover;
         popover.load();
-        popover.hoverEl.addEventListener("mouseenter", () => {
-            if (this.hoverPreviewCloseTimer !== null) {
-                window.clearTimeout(this.hoverPreviewCloseTimer);
-                this.hoverPreviewCloseTimer = null;
-            }
-        });
-        popover.hoverEl.addEventListener("mouseleave", () => this.scheduleHoverPreviewClose());
+        this.bindPreviewPointerRetention(popover);
         const content = popover.hoverEl.createDiv("fcn-hover-preview-content");
         try {
             const markdown = await this.plugin.app.vault.cachedRead(file);
@@ -3879,6 +4173,21 @@ class FolderColumnNavigatorView extends ItemView {
                 content.setText("无法预览此文件。");
             }
         }
+    }
+
+    /** Apply the same transfer protection to native and fallback previews. */
+    private bindPreviewPointerRetention(popover: HoverPopover): void {
+        popover.hoverEl.addEventListener("mouseenter", () => {
+            if (this.hoverPreviewTimer !== null) {
+                window.clearTimeout(this.hoverPreviewTimer);
+                this.hoverPreviewTimer = null;
+            }
+            if (this.hoverPreviewCloseTimer !== null) {
+                window.clearTimeout(this.hoverPreviewCloseTimer);
+                this.hoverPreviewCloseTimer = null;
+            }
+        });
+        popover.hoverEl.addEventListener("mouseleave", () => this.scheduleHoverPreviewClose());
     }
 
     private showBatchContextMenu(items: TAbstractFile[], origin: HTMLElement, event?: MouseEvent): void {
@@ -4738,7 +5047,7 @@ class FolderColumnNavigatorView extends ItemView {
         return compareNames(a, b);
     }
 
-    private selectNavigationPath(path: string): void {
+    private selectNavigationPath(path: string, revealFocus = true): void {
         if (!this.plugin.getFolder(path)) {
             return;
         }
@@ -4746,7 +5055,7 @@ class FolderColumnNavigatorView extends ItemView {
         this.clearItemSelection();
         const position = this.navigationPositions.get(path);
         if (position) {
-            this.restoreNavigationPosition(path, position);
+            this.restoreNavigationPosition(path, position, revealFocus);
             return;
         }
         this.setColumnState(path, [path]);
@@ -4754,7 +5063,7 @@ class FolderColumnNavigatorView extends ItemView {
         this.childColumnSelections.clear();
         this.activeColumnIndex = 0;
         this.refresh();
-        this.focusFirstColumnItem(0);
+        if (revealFocus) this.focusFirstColumnItem(0);
     }
 
     private rememberNavigationPosition(): void {
@@ -4770,14 +5079,14 @@ class FolderColumnNavigatorView extends ItemView {
         });
     }
 
-    private restoreNavigationPosition(path: string, position: NavigationPosition): void {
+    private restoreNavigationPosition(path: string, position: NavigationPosition, revealFocus = true): void {
         this.clearItemSelection();
         this.setColumnState(path, position.columnPaths);
         this.syncVerticalTreeExpansionFromColumnPaths();
         this.selectedFilePath = position.selectedFilePath;
         this.activeColumnIndex = Math.max(0, Math.min(position.activeColumnIndex, this.columnPaths.length - 1));
         this.refresh();
-        window.requestAnimationFrame(() => this.focusNavigationPosition(position));
+        if (revealFocus) window.requestAnimationFrame(() => this.focusNavigationPosition(position));
     }
 
     private focusNavigationPosition(position: NavigationPosition): void {
@@ -4812,7 +5121,7 @@ class FolderColumnNavigatorView extends ItemView {
         this.focusNavigationPath();
     }
 
-    private openFolderColumn(path: string, columnIndex: number, focusNextColumn = true): void {
+    private openFolderColumn(path: string, columnIndex: number, focusNextColumn = true, revealFocus = true): void {
         if (!this.plugin.getFolder(path)) {
             return;
         }
@@ -4821,7 +5130,7 @@ class FolderColumnNavigatorView extends ItemView {
             this.columnPaths[columnIndex] === path ||
             (this.columnPaths[columnIndex + 1] === path && this.verticalTreeExpandedPaths.has(path))
         )) {
-            this.focusFolderPath(path, columnIndex);
+            this.focusFolderPath(path, columnIndex, revealFocus);
             return;
         }
         if (verticalTree) {
@@ -4837,7 +5146,7 @@ class FolderColumnNavigatorView extends ItemView {
         this.activeColumnIndex = verticalTree ? columnIndex : (focusNextColumn ? columnIndex + 1 : columnIndex);
         this.refresh();
         if (verticalTree) {
-            this.focusFolderPath(path, columnIndex);
+            this.focusFolderPath(path, columnIndex, revealFocus);
             return;
         }
         if (focusNextColumn) {
@@ -4848,23 +5157,23 @@ class FolderColumnNavigatorView extends ItemView {
                 this.focusFirstColumnItem(columnIndex + 1);
             }
         } else {
-            this.focusFolderPath(path, columnIndex);
+            this.focusFolderPath(path, columnIndex, revealFocus);
         }
     }
 
-    private async openFile(file: TFile, openInNewTab = false): Promise<void> {
+    private async openFile(file: TFile, openInNewTab = false, revealFocus = true): Promise<void> {
         const workspace = this.plugin.app.workspace;
         const existingLeaf = workspace.getLeavesOfType("markdown")
             .find(leaf => leaf.view instanceof FileView && leaf.view.file?.path === file.path);
         if (existingLeaf) {
             workspace.setActiveLeaf(existingLeaf, { focus: false });
-            window.setTimeout(() => this.focusFilePath(file.path), 0);
+            window.setTimeout(() => this.focusFilePath(file.path, revealFocus), 0);
             return;
         }
 
         const targetLeaf = workspace.getLeaf(openInNewTab ? "tab" : false);
         await targetLeaf.openFile(file, { active: true });
-        window.setTimeout(() => this.focusFilePath(file.path), 0);
+        window.setTimeout(() => this.focusFilePath(file.path, revealFocus), 0);
     }
 
     revealActiveFile(): void {
@@ -4931,7 +5240,7 @@ class FolderColumnNavigatorView extends ItemView {
         return [basePath, ...descendants.reverse()];
     }
 
-    private focusFilePath(path: string): void {
+    private focusFilePath(path: string, revealFocus = true): void {
         const row = Array.from(this.columnsEl.querySelectorAll<HTMLElement>('[data-fcn-row="column"]'))
             .find(item => item.dataset.fcnKind === "file" && item.dataset.fcnPath === path);
         if (!row) {
@@ -4939,21 +5248,35 @@ class FolderColumnNavigatorView extends ItemView {
         }
         const columnIndex = Number(row.dataset.fcnColumn ?? this.activeColumnIndex);
         this.activeColumnIndex = columnIndex;
-        this.ensureColumnVisible(columnIndex);
-        row.focus();
-        this.ensureRowVisibleVertically(row);
+        if (revealFocus) this.ensureColumnVisible(columnIndex);
+        // Native focus can recenter the whole scroll chain. Preserve the column
+        // position and only reveal the row if it is actually outside the viewport.
+        row.focus({ preventScroll: true });
+        if (revealFocus) this.ensureRowVisibleVertically(row);
     }
 
     private setColumnState(basePath: string, paths: string[]): void {
         const normalizedBase = this.plugin.getFolder(basePath) ? basePath : ROOT_PATH;
-        const nextPaths: string[] = [normalizedBase];
+        // Same-column navigation may skip intermediate ancestors. Accept only
+        // descendants of the preceding column/base, never unrelated directories.
+        const isDescendant = (path: string, ancestor: string): boolean =>
+            ancestor === ROOT_PATH || path.startsWith(`${ancestor}/`);
+        const first = paths[0];
+        const replaceBase = this.plugin.settings.openFoldersInCurrentColumn &&
+            this.plugin.settings.currentColumnStart === 1 && first &&
+            this.plugin.getFolder(first) && isDescendant(first, normalizedBase);
+        const nextPaths: string[] = [replaceBase ? first : normalizedBase];
         paths.forEach(path => {
             if (path === normalizedBase || !this.plugin.getFolder(path) || nextPaths.includes(path)) {
                 return;
             }
             const parent = this.plugin.getFolder(path)?.parent;
             const previous = nextPaths[nextPaths.length - 1];
-            if (parent?.path === previous) {
+            if (parent?.path === previous || (
+                this.plugin.settings.openFoldersInCurrentColumn &&
+                nextPaths.length + 1 >= this.plugin.settings.currentColumnStart &&
+                isDescendant(path, previous)
+            )) {
                 nextPaths.push(path);
             }
         });
@@ -5359,7 +5682,7 @@ class FolderColumnNavigatorView extends ItemView {
         if (target.closest('[data-fcn-row], button, select, input, textarea, .fcn-resize-divider')) {
             return;
         }
-        this.focusCurrentSelection();
+        this.focusCurrentSelection(false);
     }
 
     private handleBlankClick(event: MouseEvent): void {
@@ -5367,7 +5690,7 @@ class FolderColumnNavigatorView extends ItemView {
         if (!target || target.closest('[data-fcn-row], button, select, input, textarea, .fcn-resize-divider')) {
             return;
         }
-        this.focusCurrentSelection();
+        this.focusCurrentSelection(false);
     }
 
     private markKeyboardSelection(row: HTMLElement): void {
@@ -5382,14 +5705,14 @@ class FolderColumnNavigatorView extends ItemView {
         row.addClass("is-keyboard-selected");
     }
 
-    private focusCurrentSelection(): void {
+    private focusCurrentSelection(revealFocus = true): void {
         const row = this.restoreLastFocusedRow();
         if (!row) {
             return;
         }
         this.markKeyboardSelection(row);
-        row.focus();
-        if (row.dataset.fcnRow === "column") {
+        row.focus({ preventScroll: true });
+        if (revealFocus && row.dataset.fcnRow === "column") {
             const columnIndex = Number(row.dataset.fcnColumn ?? this.activeColumnIndex);
             this.activeColumnIndex = columnIndex;
             this.ensureColumnVisible(columnIndex);
@@ -5461,13 +5784,16 @@ class FolderColumnNavigatorView extends ItemView {
             this.openFolderColumn(path, columnIndex);
         } else if (key === "Enter") {
             if (kind === "folder") {
-                this.openFolderColumn(path, columnIndex);
+                const folder = this.plugin.getFolder(path);
+                if (folder) this.activateFolder(folder, columnIndex);
             } else if (kind === "file") {
                 const file = this.plugin.app.vault.getAbstractFileByPath(path);
                 if (file instanceof TFile) {
                     void this.openFile(file);
                 }
-            } else if (kind === "special" && columnIndex > 0) {
+            } else if (kind === "special") {
+                if (this.returnWithinCurrentColumn(columnIndex, true)) return;
+                if (columnIndex === 0) return;
                 if (this.collapseVerticalTreeLevel(columnIndex)) {
                     return;
                 }
@@ -5612,22 +5938,33 @@ class FolderColumnNavigatorView extends ItemView {
             this.openFolderColumn(path, columnIndex, false);
             return;
         }
-        if (kind !== "folder" && this.columnPaths.length > columnIndex + 1) {
-            const parentPath = row.dataset.fcnParentPath;
-            const parentIndex = parentPath ? this.columnPaths.indexOf(parentPath) : -1;
-            const endIndex = this.isVerticalTreeColumn(columnIndex) && parentIndex >= columnIndex + 1
-                ? parentIndex + 1
-                : columnIndex + 1;
-            if (endIndex >= this.columnPaths.length) {
-                return;
-            }
-            this.columnPaths = this.columnPaths.slice(0, endIndex);
-            this.activeColumnIndex = columnIndex;
+        if (kind !== "folder" && this.collapseColumnsAfterNonFolderFocus(columnIndex, row.dataset.fcnParentPath)) {
             this.refresh();
             if (kind === "file") {
                 this.focusFilePath(path);
             }
         }
+    }
+
+    /**
+     * Keeps mouse and keyboard selection consistent: selecting a file or the
+     * parent-row action closes columns that belonged to an opened sibling
+     * folder. In vertical-tree mode, retain the parent branch containing the
+     * focused row instead of trimming it at the rendered terminal column.
+     */
+    private collapseColumnsAfterNonFolderFocus(columnIndex: number, parentPath?: string): boolean {
+        if (this.columnPaths.length <= columnIndex + 1) {
+            return false;
+        }
+        const parentIndex = parentPath ? this.columnPaths.indexOf(parentPath) : -1;
+        const endIndex = this.isVerticalTreeColumn(columnIndex) && parentIndex >= columnIndex + 1
+            ? parentIndex + 1
+            : columnIndex + 1;
+        if (endIndex >= this.columnPaths.length) {
+            return false;
+        }
+        this.columnPaths = this.columnPaths.slice(0, endIndex);
+        return true;
     }
 
     private focusNavigationPath(): void {
@@ -5637,6 +5974,7 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private focusPreviousColumnOrNavigation(columnIndex: number): void {
+        if (this.returnWithinCurrentColumn(columnIndex, true)) return;
         if (this.collapseVerticalTreeLevel(columnIndex)) {
             return;
         }
@@ -5710,17 +6048,61 @@ class FolderColumnNavigatorView extends ItemView {
             : this.columnPaths[columnIndex + 1] === path;
     }
 
-    private focusFirstColumnItem(columnIndex: number): void {
+    private focusFirstColumnItem(columnIndex: number, revealFocus = true): void {
         this.activeColumnIndex = columnIndex;
-        this.ensureColumnVisible(columnIndex);
+        if (revealFocus) this.ensureColumnVisible(columnIndex);
         const column = this.columnsEl.querySelector<HTMLElement>(`.fcn-column[data-fcn-column="${columnIndex}"]`);
         const firstItem = Array.from(column?.querySelectorAll<HTMLElement>('[data-fcn-row="column"]') ?? [])
             .find(row => row.dataset.fcnKind !== "special");
         if (firstItem) {
-            firstItem.focus();
+            firstItem.focus({ preventScroll: !revealFocus });
         } else {
-            this.containerEl.focus();
+            this.containerEl.focus({ preventScroll: !revealFocus });
         }
+    }
+
+    /** Explicit mouse gesture: reveal only horizontally, without changing focus. */
+    private revealColumnHorizontally(column: HTMLElement): void {
+        const viewport = this.columnsEl.getBoundingClientRect();
+        const rect = column.getBoundingClientRect();
+        let left = this.columnsEl.scrollLeft;
+        if (rect.width > this.columnsEl.clientWidth || rect.left < viewport.left) {
+            left += rect.left - viewport.left;
+        } else if (rect.right > viewport.left + this.columnsEl.clientWidth) {
+            left += rect.right - viewport.left - this.columnsEl.clientWidth;
+        } else {
+            return;
+        }
+        // An oversized column cannot fit; align its beginning instead.
+        this.columnsEl.scrollTo({ left: Math.max(0, left), behavior: "smooth" });
+    }
+
+    /** Shared predicate keeps the parent-action icon and keyboard routing consistent. */
+    private canReturnWithinCurrentColumn(columnIndex: number): boolean {
+        if (!this.plugin.settings.openFoldersInCurrentColumn ||
+            columnIndex + 1 < this.plugin.settings.currentColumnStart) return false;
+        const path = this.columnPaths[columnIndex];
+        const parent = this.plugin.getFolder(path)?.parent;
+        const previous = columnIndex > 0 ? this.columnPaths[columnIndex - 1] : null;
+        return Boolean(parent && path !== this.navigationBasePath && parent.path !== previous);
+    }
+
+    /** Return through skipped ancestors before removing a horizontal column. */
+    private returnWithinCurrentColumn(columnIndex: number, focus = false): boolean {
+        if (!this.canReturnWithinCurrentColumn(columnIndex)) return false;
+        const path = this.columnPaths[columnIndex];
+        const parent = this.plugin.getFolder(path)?.parent;
+        if (!parent) return false;
+        this.columnPaths = [...this.columnPaths.slice(0, columnIndex), parent.path];
+        this.activeColumnIndex = columnIndex;
+        this.selectedFilePath = null;
+        this.refresh();
+        if (focus) {
+            // Returning selects the folder we just left, rather than jumping to
+            // an unrelated first sibling or scrolling horizontally to another column.
+            this.focusFolderPath(path, columnIndex, false);
+        }
+        return true;
     }
 
     private ensureColumnVisible(columnIndex: number): void {
@@ -5765,14 +6147,14 @@ class FolderColumnNavigatorView extends ItemView {
         }
     }
 
-    private focusFolderPath(path: string, columnIndex: number): void {
+    private focusFolderPath(path: string, columnIndex: number, revealFocus = true): void {
         const column = this.columnsEl.querySelector<HTMLElement>(`.fcn-column[data-fcn-column="${columnIndex}"]`);
         const row = Array.from(column?.querySelectorAll<HTMLElement>('[data-fcn-row="column"]') ?? [])
             .find(item => item.dataset.fcnKind === "folder" && item.dataset.fcnPath === path);
         if (row) {
-            this.ensureColumnVisible(columnIndex);
-            row.focus();
-            this.ensureRowVisibleVertically(row);
+            if (revealFocus) this.ensureColumnVisible(columnIndex);
+            row.focus({ preventScroll: true });
+            if (revealFocus) this.ensureRowVisibleVertically(row);
         }
     }
 
@@ -5810,6 +6192,11 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
 
     getSettingDefinitions(): SettingDefinitionItem[] {
         return this.createSettingDefinitions();
+    }
+
+    /** Obsidian rebuilds the definitions when the tab opens. */
+    updateIfVisible(): void {
+        if (this.containerEl?.isConnected && this.containerEl.getClientRects().length > 0) this.update();
     }
 
     getControlValue(key: string): unknown {
@@ -5867,6 +6254,23 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                         name: "深层目录纵向展开",
                         desc: "开启后，超过最大水平列数的目录会在最后一列按树形垂直展开。",
                         control: { type: "toggle", key: "verticalTreeEnabled" }
+                    },
+                    {
+                        name: "点击目录在当前列打开",
+                        desc: "从指定列开始，单击目录以其内容替换当前列，不再新增右侧列；优先于纵向展开。默认关闭。",
+                        control: { type: "toggle", key: "openFoldersInCurrentColumn" }
+                    },
+                    {
+                        name: "打开目录后的横向定位",
+                        desc: "点击或 Enter 展开新列时，选择靠左定位的列，或将新展开列靠右显示。保留左侧 1/2 列表示将操作列前面的第 1/2 列靠左；不足时从首列开始。默认当前操作列靠左；左侧一级目录栏保持可见。上下方向键、当前列打开和纵向展开不触发。",
+                        control: { type: "dropdown", key: "columnClickAlignment", options: COLUMN_CLICK_ALIGNMENT_OPTIONS }
+                    },
+                    {
+                        name: "当前列打开起始列",
+                        desc: "按文件列表从左到右计数，默认第 2 列；方向键仍使用原有导航方式。",
+                        visible: () => this.plugin.settings.openFoldersInCurrentColumn,
+                        control: { type: "slider", key: "currentColumnStart", min: 1, max: 8, step: 1,
+                            displayFormat: value => `第 ${value} 列` }
                     },
                     {
                         name: "最大水平列数",
@@ -5981,7 +6385,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                         items: [
                             {
                                 name: "主题风格",
-                                desc: "立即应用到导航、文件树、分组、日历、按钮和右键菜单。Style Settings 仍可作为可选的切换入口。",
+                                desc: "立即应用到导航、文件树、分组、日历、按钮和右键菜单；插件保存的选择会在启动时稳定恢复。",
                                 control: {
                                     type: "dropdown",
                                     key: "themeStyle",
@@ -5991,6 +6395,22 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                         journal: "手帐风格"
                                     }
                                 }
+                            },
+                            {
+                                name: "彩色配色",
+                                desc: "为彩色风格切换一套协调的目录、分组、菜单和日历强调色。",
+                                visible: () => this.plugin.settings.themeStyle === "colorful",
+                                control: {
+                                    type: "dropdown",
+                                    key: "colorfulPalette",
+                                    options: COLORFUL_PALETTE_LABELS
+                                }
+                            },
+                            {
+                                name: "彩虹目录",
+                                desc: "按目录分配不同颜色，默认开启；关闭后移除目录背景渐变和彩色装饰条，顶部标签和分组使用统一强调色。",
+                                visible: () => this.plugin.settings.themeStyle === "colorful",
+                                control: { type: "toggle", key: "rainbowFolders" }
                             }
                         ]
                     },
@@ -6029,6 +6449,11 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                         type: "group",
                         heading: "文字与布局",
                         items: [
+                            {
+                                name: "显示条目分割线",
+                                desc: "显示文件、目录条目之间的横向分割线；关闭不影响列边界和分组标题。",
+                                control: { type: "toggle", key: "showItemSeparators" }
+                            },
                             {
                                 name: "一级目录名称字号",
                                 desc: "调整左侧模式下一级目录的文字大小。顶部目录标签使用“文件树名称字号”。",
@@ -6309,6 +6734,22 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                 items: [
                     {
                         type: "group",
+                        heading: "创建每日笔记",
+                        items: [{
+                            name: "创建规则",
+                            render: setting => {
+                                setting.settingEl.addClass("fcn-daily-setting");
+                                renderDailyNoteEditor(setting.settingEl, this.plugin.settings.dailyNote, async config => {
+                                    await this.plugin.saveDailyNoteConfig(config);
+                                }, input => { new FolderPathInputSuggest(this.app, input, folder => {
+                                    input.value = folder.path;
+                                    input.dispatchEvent(new Event("input", { bubbles: true }));
+                                }); }, this.app);
+                            }
+                        }]
+                    },
+                    {
+                        type: "group",
                         heading: "展示",
                         items: [
                             {
@@ -6430,15 +6871,26 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
 
     private async applyControlValue(key: string, value: unknown): Promise<void> {
         switch (key) {
+            case "rainbowFolders":
+                this.plugin.settings.rainbowFolders = Boolean(value);
+                this.plugin.applyThemeStyle();
+                break;
             case "themeStyle":
                 if (isThemeStyle(value)) {
                     await this.plugin.updateThemeStyle(value);
                 }
                 return;
+            case "colorfulPalette":
+                if (isColorfulPalette(value)) {
+                    await this.plugin.updateColorfulPalette(value);
+                }
+                return;
             case "showRootFoldersAtTop":
             case "verticalTreeEnabled":
+            case "openFoldersInCurrentColumn":
             case "verticalTreeCollapseSiblings":
             case "wrapItemNames":
+            case "showItemSeparators":
             case "showMetadataNames":
             case "enableHoverPreview":
             case "hoverPreviewFolderNotes":
@@ -6478,6 +6930,12 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                 break;
             case "verticalTreeMaxColumns":
                 this.plugin.settings.verticalTreeMaxColumns = clampVerticalTreeColumns(value);
+                break;
+            case "currentColumnStart":
+                this.plugin.settings.currentColumnStart = Math.max(1, Math.min(8, Math.round(Number(value)) || 2));
+                break;
+            case "columnClickAlignment":
+                this.plugin.settings.columnClickAlignment = cleanColumnClickAlignment(value);
                 break;
             case "wrapItemNameMaxLines":
                 this.plugin.settings.wrapItemNameMaxLines = clampItemNameWrapLines(value);
