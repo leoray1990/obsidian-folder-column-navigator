@@ -19,7 +19,12 @@ class Element {
     addEventListener(name, fn) { this.events[name] = fn; }
 }
 const settings = [];
+let componentPromiseAssimilations = 0;
 function control() { return {
+    // Native Obsidian components expose fluent then(callback). Resolve to void
+    // here to fail fast instead of hanging the test process like the native
+    // self-resolving thenable does. Promise callbacks must never return them.
+    then(resolve) { componentPromiseAssimilations++; resolve(undefined); },
     inputEl: new Element(), options: {}, setValue(value) { this.value = value; return this; },
     setDisabled(value) { this.disabled = value; return this; }, setPlaceholder() { return this; },
     setButtonText(value) { this.label = value; return this; }, setCta() { return this; },
@@ -34,11 +39,11 @@ class Setting {
     addToggle(fn) { return this.addText(fn); } addDropdown(fn) { return this.addText(fn); }
     addButton(fn) { return this.addText(fn); } addExtraButton(fn) { return this.addText(fn); }
 }
-const exportsObject = {}, frames = [];
+const exportsObject = {}, frames = [], notices = [];
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, "../daily-note.ts"), "utf8"), {
     compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS }
 }).outputText, { exports: exportsObject, Error,
-    require: () => ({ moment, Setting, Modal: class {}, Notice: class {}, AbstractInputSuggest: class {}, TFile: class {}, TFolder: class {} }),
+    require: () => ({ moment, Setting, Modal: class {}, Notice: class { constructor(message, duration) { notices.push({ message, duration }); } }, AbstractInputSuggest: class {}, TFile: class {}, TFolder: class {} }),
     window: { requestAnimationFrame: fn => frames.push(fn) }
 });
 const { renderDailyNoteEditor, DEFAULT_DAILY_NOTE, preserveSettingsScroll } = exportsObject;
@@ -63,10 +68,15 @@ async function run() {
     assert.equal([...new Set(labels)].sort().join(","), ["基础", "固定文字", "日期相关"].sort().join(","));
     assert.ok(walk(root).some(el => el.text === "+ 周开始"));
     assert.ok(walk(root).some(el => el.text === "+ 周结束"));
+    assert.ok(walk(root).some(el => el.text === "+ 周五"));
+    assert.ok(walk(root).some(el => el.text === "+ 本周最后一个工作日"));
     preset.controls[0].change("按年月周");
     assert.match(walk(root).find(el => el.cls === "fcn-daily-preview").text, /\d{2}-\d{2}-\d{2}-\d{2}/);
     const saveButton = visibleSettings().flatMap(s => s.controls).find(c => c.label === "保存创建规则");
     saveButton.click(); await new Promise(resolve => setImmediate(resolve));
+    assert.equal(componentPromiseAssimilations, 0, "Save cleanup must not return an Obsidian component to Promise.finally");
+    assert.deepEqual(notices.at(-1), { message: "创建规则已保存", duration: 2000 });
+    assert.ok(!walk(root).some(el => el.text === "已保存"), "Save feedback must not occupy an inline row");
     assert.equal(saved[0].directory, "{{date:YYYY}}/{{date:MM}}/{{weekStart:MM-DD}}-{{weekEnd:MM-DD}}");
     const toggle = visibleSettings().find(s => s.name === "启用每日笔记创建").controls[0];
     toggle.change(false); await new Promise(resolve => setImmediate(resolve));

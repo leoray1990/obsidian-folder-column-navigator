@@ -16,6 +16,7 @@ import {
     TFolder,
     ViewStateResult,
     WorkspaceLeaf,
+    requestUrl,
     setIcon
 } from "obsidian";
 import { match as matchPinyin } from "pinyin-pro";
@@ -24,6 +25,9 @@ import zhCnLocale from "@fullcalendar/core/locales/zh-cn";
 import dayGridPlugin from "@fullcalendar/daygrid";
 import interactionPlugin from "@fullcalendar/interaction";
 import { DEFAULT_DAILY_NOTE, cleanDailyNoteConfig, renderDailyNoteEditor, preserveSettingsScroll, CreateDailyNoteModal, type DailyNoteConfig } from "./daily-note";
+import { MainlandHolidayCalendar, cleanHolidayCache, fetchHolidayYear, type HolidayCache } from "./holidays";
+import { CalendarFileIndex } from "./calendar-index";
+import { CalendarVirtualList } from "./calendar-virtual-list";
 
 const VIEW_TYPE = "folder-column-navigator";
 const CALENDAR_VIEW_TYPE = "folder-column-navigator-calendar";
@@ -149,6 +153,9 @@ interface FolderColumnNavigatorSettings {
     calendarFilenamePatterns: string[];
     calendarFileExtensions: string[];
     dailyNote: DailyNoteConfig;
+    calendarShowHolidays: boolean;
+    holidayOnlineUpdate: boolean;
+    holidayCache: HolidayCache;
     /** Vault paths mapped to their intended date, including renamed Canvas/Base notes. */
     calendarCreatedNotes: Record<string, string>;
 }
@@ -226,6 +233,9 @@ const DEFAULT_SETTINGS: FolderColumnNavigatorSettings = {
     calendarFilenamePatterns: ["YYYYMMDD", "YYYY年MM月DD日", "YYYY-MM-DD*"],
     calendarFileExtensions: ["md", "canvas", "base"],
     dailyNote: { ...DEFAULT_DAILY_NOTE },
+    calendarShowHolidays: true,
+    holidayOnlineUpdate: false,
+    holidayCache: {},
     calendarCreatedNotes: {}
 };
 
@@ -914,27 +924,9 @@ function filenamePatternToDateMatcher(pattern: string): { expression: RegExp; to
         : null;
 }
 
-function extractCalendarDateKeysFromFilename(filename: string, patterns: string[]): string[] {
-    const dateKeys = new Set<string>();
-    patterns.forEach(pattern => {
-        const matcher = filenamePatternToDateMatcher(pattern);
-        const match = matcher?.expression.exec(filename);
-        if (!matcher || !match) {
-            return;
-        }
-        const values = matcher.tokens.reduce<Record<string, string>>((result, token, index) => {
-            result[token] = match[index + 1];
-            return result;
-        }, {});
-        const key = calendarDateKeyFromParts(Number(values.YYYY), Number(values.MM), Number(values.DD));
-        if (key) {
-            dateKeys.add(key);
-        }
-    });
-    return [...dateKeys];
-}
 
 class DateMatchedFilesModal extends Modal {
+    private virtualList: CalendarVirtualList<TFile> | null = null;
     constructor(
         app: FolderColumnNavigatorPlugin["app"],
         private readonly date: Date,
@@ -958,8 +950,8 @@ class DateMatchedFilesModal extends Modal {
             const button = list.createEl("button", { text: "+ 创建每日笔记", cls: "fcn-date-match-modal-item" });
             button.addEventListener("click", () => { this.close(); this.onCreate?.(); });
         }
-        this.files.forEach(file => {
-            const row = list.createEl("button", {
+        this.virtualList = new CalendarVirtualList(list, this.files, (file, parent) => {
+            const row = parent.createEl("button", {
                 cls: "fcn-date-match-modal-item",
                 attr: { type: "button", "aria-label": `打开 ${file.path}` }
             });
@@ -977,10 +969,12 @@ class DateMatchedFilesModal extends Modal {
                 this.close();
                 void this.onChooseFile(file);
             });
+            return row;
         });
     }
 
     onClose(): void {
+        this.virtualList?.dispose(); this.virtualList = null;
         this.modalEl.removeClass("fcn-date-match-modal");
         this.contentEl.empty();
     }
@@ -1020,11 +1014,18 @@ function globPatternToRegExp(pattern: string): RegExp {
 
 export default class FolderColumnNavigator extends Plugin {
     settings: FolderColumnNavigatorSettings = { ...DEFAULT_SETTINGS };
+    holidays = new MainlandHolidayCalendar();
+    private holidayUpdateBusy = false;
     private readonly views = new Set<FolderColumnNavigatorView>();
     private readonly hiddenPatternMatchers = new Map<string, RegExp>();
     private readonly themeStyleReapplyTimers = new Set<number>();
     private settingsTab: FolderColumnNavigatorSettingTab | null = null;
     private vaultRefreshTimer: number | null = null;
+    private calendarIndex: CalendarFileIndex<TFile> | null = null;
+    private calendarIndexRules = "";
+    private calendarIndexAssociations: Record<string, string> = {};
+    private resolveCalendarLayout: (() => void) | null = null;
+    private readonly calendarLayoutReady = new Promise<void>(resolve => { this.resolveCalendarLayout = resolve; });
 
     async onload(): Promise<void> {
         await this.loadSettings();
@@ -1079,14 +1080,35 @@ export default class FolderColumnNavigator extends Plugin {
         // Do not subscribe to that startup stream; refresh once after layout.
         this.app.workspace.onLayoutReady(() => {
             if (!this.settingsTab) return;
-            this.registerEvent(this.app.vault.on("create", () => this.scheduleVaultRefresh()));
-            this.registerEvent(this.app.vault.on("delete", () => this.scheduleVaultRefresh()));
+            this.resolveCalendarLayout?.(); this.resolveCalendarLayout = null;
+            // Declarative definitions are cached when the tab is registered,
+            // before vault discovery may have populated the root folders.
+            // Refresh that snapshot once after loading even while hidden. Later
+            // event batches still use updateIfVisible to avoid costly rebuilds.
+            this.settingsTab.update();
+            this.registerEvent(this.app.vault.on("create", item => {
+                if (item instanceof TFile) this.calendarIndex?.update(item);
+                this.scheduleVaultRefresh();
+            }));
+            this.registerEvent(this.app.vault.on("modify", file => {
+                if (file instanceof TFile) this.calendarIndex?.update(file);
+                this.scheduleVaultRefresh();
+            }));
+            this.registerEvent(this.app.vault.on("delete", item => {
+                this.calendarIndex?.remove(item.path, item instanceof TFolder);
+                this.scheduleVaultRefresh();
+            }));
+            this.registerEvent(this.app.metadataCache.on("changed", file => {
+                this.calendarIndex?.update(file); this.scheduleVaultRefresh();
+            }));
             this.registerEvent(this.app.metadataCache.on("resolved", () => this.scheduleVaultRefresh()));
             this.scheduleVaultRefresh();
         });
     }
 
     onunload(): void {
+        this.calendarIndex?.dispose(); this.calendarIndex = null;
+        this.resolveCalendarLayout?.(); this.resolveCalendarLayout = null;
         if (this.vaultRefreshTimer !== null) {
             window.clearTimeout(this.vaultRefreshTimer);
             this.vaultRefreshTimer = null;
@@ -1277,6 +1299,10 @@ export default class FolderColumnNavigator extends Plugin {
         if (this.settings.calendarFileExtensions.length === 0 && saved?.calendarFileExtensions === undefined) {
             this.settings.calendarFileExtensions = [...DEFAULT_SETTINGS.calendarFileExtensions];
         }
+        this.settings.calendarShowHolidays = typeof saved?.calendarShowHolidays === "boolean" ? saved.calendarShowHolidays : true;
+        this.settings.holidayOnlineUpdate = saved?.holidayOnlineUpdate === true;
+        this.settings.holidayCache = cleanHolidayCache(saved?.holidayCache);
+        this.holidays = new MainlandHolidayCalendar(this.settings.holidayCache);
         if (this.settings.folderNoteSpecialNames.length === 0 && saved?.folderNoteSpecialNames === undefined) {
             this.settings.folderNoteSpecialNames = [...DEFAULT_SETTINGS.folderNoteSpecialNames];
         }
@@ -1287,7 +1313,115 @@ export default class FolderColumnNavigator extends Plugin {
 
     async saveSettings(updateSettings = true): Promise<void> {
         await this.saveData(this.settings);
+        if (this.calendarIndex) this.configureCalendarIndex();
         this.refreshViews(updateSettings);
+    }
+
+    /** Creating/closing a file-tree view never starts the date index. Only a
+     * visible calendar asks for it; all calendar views share the same instance. */
+    getCalendarIndex(): CalendarFileIndex<TFile> {
+        if (!this.calendarIndex) {
+            const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+            const app = this.app;
+            this.calendarIndex = new CalendarFileIndex(function* () {
+                // Snapshot each folder separately: a delete during a task yield
+                // must not shift a live array iterator past the next file.
+                const stack = [app.vault.getRoot().children.slice()[Symbol.iterator]()];
+                while (stack.length) {
+                    const next = stack[stack.length - 1].next();
+                    if (next.done) { stack.pop(); continue; }
+                    if (next.value instanceof TFolder) stack.push(next.value.children.slice()[Symbol.iterator]());
+                    else if (next.value instanceof TFile) yield next.value;
+                }
+            }, () => [], (a, b) => collator.compare(a.path, b.path));
+            this.configureCalendarIndex();
+        }
+        return this.calendarIndex;
+    }
+
+    async queryCalendarDates(start: string, end: string): Promise<Map<string, TFile[]>> {
+        const index = this.getCalendarIndex();
+        // Restored calendar leaves can open before file discovery completes.
+        // Do not seed a permanently incomplete index from that partial tree.
+        await this.calendarLayoutReady;
+        return index.query(start, end);
+    }
+
+    private configureCalendarIndex(): void {
+        const index = this.calendarIndex;
+        if (!index) return;
+        const settings = this.settings;
+        // Only matching-rule changes invalidate the whole index. Visual settings,
+        // column widths, holiday data and creation templates do not.
+        const rules = JSON.stringify([settings.hiddenPatterns, settings.calendarSearchPaths, settings.calendarFileExtensions,
+            settings.calendarMatchCreatedDate, settings.calendarMatchModifiedDate, settings.calendarMatchFrontmatter,
+            settings.calendarFrontmatterKeys, settings.calendarMatchFilename, settings.calendarFilenamePatterns]);
+        if (rules !== this.calendarIndexRules) {
+            this.calendarIndexRules = rules;
+            const patterns = settings.calendarFilenamePatterns.map(filenamePatternToDateMatcher).filter((value): value is NonNullable<typeof value> => value !== null);
+            index.reset(file => {
+                if (this.isHiddenByPattern(file.path)) return [];
+                const keys = new Set<string>();
+                const associated = this.settings.calendarCreatedNotes[file.path];
+                if (associated) keys.add(associated);
+                const inScope = (!settings.calendarSearchPaths.length || settings.calendarSearchPaths.some(path => file.path.startsWith(`${path}/`))) &&
+                    (!settings.calendarFileExtensions.length || settings.calendarFileExtensions.includes(file.extension.toLocaleLowerCase()));
+                if (!inScope) return keys;
+                if (settings.calendarMatchCreatedDate) keys.add(formatCalendarDate(new Date(file.stat.ctime)));
+                if (settings.calendarMatchModifiedDate) keys.add(formatCalendarDate(new Date(file.stat.mtime)));
+                if (settings.calendarMatchFrontmatter) {
+                    const frontmatter = this.app.metadataCache.getFileCache(file)?.frontmatter;
+                    settings.calendarFrontmatterKeys.forEach(key => extractCalendarDateKeys(frontmatter?.[key]).forEach(date => keys.add(date)));
+                }
+                if (settings.calendarMatchFilename) for (const matcher of patterns) {
+                    const match = matcher.expression.exec(file.basename);
+                    if (!match) continue;
+                    const values: Record<string, string> = {};
+                    matcher.tokens.forEach((token, i) => { values[token] = match[i + 1]; });
+                    const date = calendarDateKeyFromParts(Number(values.YYYY), Number(values.MM), Number(values.DD));
+                    if (date) keys.add(date);
+                }
+                return keys;
+            });
+        }
+        const current = settings.calendarCreatedNotes;
+        for (const path of new Set([...Object.keys(this.calendarIndexAssociations), ...Object.keys(current)])) {
+            if (this.calendarIndexAssociations[path] === current[path]) continue;
+            const file = this.app.vault.getAbstractFileByPath(path);
+            if (file instanceof TFile) index.update(file); else index.remove(path);
+        }
+        this.calendarIndexAssociations = { ...current };
+    }
+
+    /** Explicit opt-in update, isolated from vault scans and rule-editor drafts.
+     * Persist first; failed downloads or writes keep the previous valid cache. */
+    async updateHolidayData(year: number): Promise<void> {
+        if (this.holidayUpdateBusy) throw new Error("正在更新节假日数据，请稍候。");
+        this.holidayUpdateBusy = true;
+        try {
+            const data = await fetchHolidayYear(year, this.settings.holidayOnlineUpdate, async url => {
+                let timer: ReturnType<typeof setTimeout> | undefined;
+                try {
+                    const response = await Promise.race([
+                        requestUrl({ url, method: "GET", throw: false }),
+                        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("节假日数据请求超时。")), 15000); })
+                    ]);
+                    if (response.status !== 200) throw new Error(`${year} 年数据未发布或暂时无法获取（HTTP ${response.status}）。`);
+                    if (response.text.length > 150000) throw new Error("节假日数据过大，已拒绝更新。");
+                    return JSON.parse(response.text) as unknown;
+                } finally { if (timer !== undefined) clearTimeout(timer); }
+            });
+            const previous = this.settings.holidayCache;
+            this.settings.holidayCache = { ...previous, [year]: { data, updatedAt: new Date().toISOString() } };
+            try { await this.saveData(this.settings); }
+            catch (error) { this.settings.holidayCache = previous; throw error; }
+            this.holidays = new MainlandHolidayCalendar(this.settings.holidayCache);
+            this.views.forEach(view => view.refreshDailyNoteCreationUi());
+        } finally { this.holidayUpdateBusy = false; }
+    }
+
+    refreshHolidayUi(): void {
+        this.views.forEach(view => view.refreshDailyNoteCreationUi());
     }
 
     /** Creation templates do not change matching rules. Never rescan the vault
@@ -1391,6 +1525,21 @@ export default class FolderColumnNavigator extends Plugin {
      * entire directory tree outside this view.
      */
     private async handleItemRename(item: TAbstractFile, oldPath: string): Promise<void> {
+        if (item instanceof TFile) this.calendarIndex?.update(item, oldPath);
+        else if (this.calendarIndex) {
+            this.calendarIndex.remove(oldPath, true);
+            if (item instanceof TFolder) {
+                const stack = [item.children.slice()[Symbol.iterator]()];
+                let count = 0;
+                while (stack.length) {
+                    const child = stack[stack.length - 1].next();
+                    if (child.done) { stack.pop(); continue; }
+                    if (child.value instanceof TFolder) stack.push(child.value.children.slice()[Symbol.iterator]());
+                    else if (child.value instanceof TFile) this.calendarIndex?.update(child.value);
+                    if (++count % 256 === 0) await new Promise<void>(resolve => window.setTimeout(resolve, 0));
+                }
+            }
+        }
         const nextOrders: Record<string, string[]> = {};
         const remapPath = (path: string): string => path === oldPath || path.startsWith(`${oldPath}/`)
             ? `${item.path}${path.slice(oldPath.length)}`
@@ -1402,6 +1551,7 @@ export default class FolderColumnNavigator extends Plugin {
         this.settings.calendarCreatedNotes = Object.fromEntries(Object.entries(this.settings.calendarCreatedNotes)
             .map(([path, date]) => [remapPath(path), date]));
         await this.saveData(this.settings);
+        if (this.calendarIndex) this.configureCalendarIndex();
         this.refreshViews();
     }
 
@@ -1718,10 +1868,17 @@ class FolderColumnNavigatorView extends ItemView {
     private calendarExpanded = false;
     private calendarDisplayMode: CalendarDisplayMode = "month";
     private calendarDateMatches = new Map<string, TFile[]>();
+    private calendarMatchKey = "";
+    private calendarMatchRequest = 0;
+    private calendarMatching = false;
+    private calendarMatchError = "";
+    private calendarVirtualList: CalendarVirtualList<TFile> | null = null;
     private calendarResultsEl: HTMLElement | null = null;
     private calendarSelectedDateKey: string | null = null;
     private calendarResizeObserver: ResizeObserver | null = null;
     private calendarResizeFrame: number | null = null;
+    /** Watch the available width, not the height produced by FullCalendar itself. */
+    private calendarMeasuredWidth = 0;
     private viewHostEl: HTMLElement | null = null;
     private viewContentEl: HTMLElement | null = null;
     private navigationEl!: HTMLElement;
@@ -1885,6 +2042,8 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     async onClose(): Promise<void> {
+        this.calendarMatchRequest++;
+        this.calendarVirtualList?.dispose(); this.calendarVirtualList = null;
         this.containerEl.removeEventListener("keydown", this.keydownHandler);
         this.containerEl.removeEventListener("focusin", this.focusinHandler);
         this.containerEl.removeEventListener("pointerdown", this.pointerdownHandler);
@@ -2061,7 +2220,7 @@ class FolderColumnNavigatorView extends ItemView {
             return;
         }
         this.ensureCalendar();
-        window.requestAnimationFrame(() => this.calendar?.updateSize());
+        this.handleCalendarResize(true);
     }
 
     private updateCalendarPane(): void {
@@ -2078,14 +2237,20 @@ class FolderColumnNavigatorView extends ItemView {
         this.handleCalendarResize();
     }
 
-    private handleCalendarResize(): void {
-        if (!this.calendar || !this.calendarExpanded || this.calendarResizeFrame !== null) {
+    private handleCalendarResize(force = false): void {
+        if (!this.calendar || !this.calendarExpanded || this.calendarDisplayMode === "year" ||
+            !this.calendarHostEl.getClientRects().length) {
             return;
         }
+        const width = Math.round(this.calendarHostEl.getBoundingClientRect().width);
+        if (width <= 0 || (!force && width === this.calendarMeasuredWidth)) return;
+        this.calendarMeasuredWidth = width;
+        if (this.calendarResizeFrame !== null) return;
         this.calendarResizeFrame = window.requestAnimationFrame(() => {
             this.calendarResizeFrame = null;
+            if (!this.calendarHostEl.getClientRects().length || this.calendarDisplayMode === "year") return;
             this.calendar?.updateSize();
-            this.updateCalendarDateCells();
+            this.refreshCalendarDateMatches();
         });
     }
 
@@ -2103,14 +2268,19 @@ class FolderColumnNavigatorView extends ItemView {
             dayCellContent: info => String(info.date.getDate()),
             dayHeaderContent: info => ["日", "一", "二", "三", "四", "五", "六"][info.date.getDay()],
             headerToolbar: false,
-            fixedWeekCount: true,
-            showNonCurrentDates: false,
+            // Month padding must not leak into week mode: FullCalendar otherwise
+            // extends a seven-day view to additional week rows with hidden dates.
+            views: {
+                dayGridMonth: { fixedWeekCount: true, showNonCurrentDates: false },
+                dayGridWeek: { fixedWeekCount: false, showNonCurrentDates: true }
+            },
             height: "auto",
             dateClick: info => this.openCalendarDate(info.date, info.jsEvent.metaKey || info.jsEvent.ctrlKey),
             datesSet: () => this.refreshCalendarDateMatches()
         });
         this.calendar.render();
-        this.refreshCalendarDateMatches();
+        // Initial render's datesSet already calculates the visible matches.
+        this.handleCalendarResize(true);
     }
 
     private navigateCalendar(offset: number): void {
@@ -2124,7 +2294,6 @@ class FolderColumnNavigatorView extends ItemView {
             nextDate.setMonth(nextDate.getMonth() + offset);
         }
         this.calendar?.gotoDate(nextDate);
-        this.refreshCalendarDateMatches();
     }
 
     private goToCalendarToday(): void {
@@ -2137,14 +2306,14 @@ class FolderColumnNavigatorView extends ItemView {
             return;
         }
         this.calendarDisplayMode = mode;
+        // Reveal the host before changing views so width measurement cannot
+        // happen while the year picker still has the grid at display:none.
+        this.updateCalendarDisplayMode();
         if (mode !== "year") {
             this.calendar?.changeView(mode === "week" ? "dayGridWeek" : "dayGridMonth");
         }
-        this.updateCalendarDisplayMode();
-        this.refreshCalendarDateMatches();
-        if (mode === "month") {
-            window.requestAnimationFrame(() => this.calendar?.updateSize());
-        }
+        if (mode === "year") this.refreshCalendarDateMatches();
+        this.handleCalendarResize(true);
     }
 
     private updateCalendarDisplayMode(): void {
@@ -2206,10 +2375,11 @@ class FolderColumnNavigatorView extends ItemView {
             this.calendarSelectedDateKey = formatCalendarDate(date);
             await this.plugin.saveSettings();
             await this.plugin.app.workspace.getLeaf(false).openFile(file, { active: true });
-        }).open();
+        }, date => this.plugin.holidays.lastWorkdayOfWeek(date)).open();
     }
 
     private openCalendarDate(date: Date, create = false): void {
+        if (this.calendarMatching || this.calendarMatchError) return;
         const files = this.calendarDateMatches.get(formatCalendarDate(date)) ?? [];
         this.calendarSelectedDateKey = formatCalendarDate(date);
         this.updateCalendarDateCells();
@@ -2253,7 +2423,8 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private refreshCalendarDateMatches(): void {
-        if (!this.calendar) {
+        if (!this.calendar || !this.calendarExpanded || this.calendarHostEl?.getClientRects().length === 0 ||
+            (!this.isStandaloneCalendar && !this.plugin.settings.showCalendarAtBottom)) {
             return;
         }
         const date = this.calendar.getDate();
@@ -2267,7 +2438,31 @@ class FolderColumnNavigatorView extends ItemView {
             : this.calendarDisplayMode === "week"
                 ? new Date(start.getFullYear(), start.getMonth(), start.getDate() + 7)
                 : new Date(date.getFullYear(), date.getMonth() + 1, 1);
-        this.calendarDateMatches = this.buildCalendarDateMatches(start, end);
+        const index = this.plugin.getCalendarIndex();
+        const key = `${formatCalendarDate(start)}/${formatCalendarDate(end)}/${index.version}`;
+        if (key === this.calendarMatchKey) {
+            if (!this.calendarMatching) { this.updateCalendarDateCells(); this.renderCalendarMatchedFiles(); }
+            return;
+        }
+        this.calendarMatchKey = key;
+        const request = ++this.calendarMatchRequest;
+        this.calendarMatching = true; this.calendarMatchError = "";
+        this.updateCalendarDateCells();
+        void this.plugin.queryCalendarDates(formatCalendarDate(start), formatCalendarDate(end)).then(matches => {
+            if (request !== this.calendarMatchRequest || !this.calendar) return;
+            this.calendarDateMatches = matches;
+            this.calendarMatching = false;
+            this.finishCalendarDateMatches();
+        }).catch((error: unknown) => {
+            if (request !== this.calendarMatchRequest || !this.calendar) return;
+            console.error("Folder Column Navigator: calendar index failed", error);
+            this.calendarMatching = false; this.calendarMatchKey = "";
+            this.calendarMatchError = "日历索引失败，请切换月份重试。";
+            this.updateCalendarDateCells();
+        });
+    }
+
+    private finishCalendarDateMatches(): void {
         if (this.isStandaloneCalendar && !this.calendarSelectedDateKey) {
             const todayKey = formatCalendarDate(new Date());
             if (this.calendarDateMatches.has(todayKey) || this.plugin.settings.dailyNote.enabled) {
@@ -2287,73 +2482,52 @@ class FolderColumnNavigatorView extends ItemView {
         this.renderCalendarMatchedFiles();
     }
 
-    private buildCalendarDateMatches(start: Date, end: Date): Map<string, TFile[]> {
-        const settings = this.plugin.settings;
-        const matches = new Map<string, TFile[]>();
-        // Multiple rules can all match one file. A linear search in the date's
-        // result array makes mass-import dates quadratic on large vaults.
-        const seen = new Map<string, Set<string>>();
-        const startKey = formatCalendarDate(start);
-        const endKey = formatCalendarDate(end);
-        const addMatch = (key: string, file: TFile): void => {
-            if (key < startKey || key >= endKey) {
-                return;
-            }
-            const files = matches.get(key) ?? [];
-            const paths = seen.get(key) ?? new Set<string>();
-            if (!paths.has(file.path)) {
-                paths.add(file.path);
-                seen.set(key, paths);
-                files.push(file);
-                matches.set(key, files);
-            }
-        };
-
-        this.plugin.app.vault.getFiles()
-            .filter(file => !this.plugin.isHiddenByPattern(file.path))
-            .filter(file => settings.calendarSearchPaths.length === 0 || settings.calendarSearchPaths.some(path =>
-                file.path.startsWith(`${path}/`)
-            ))
-            .filter(file => settings.calendarFileExtensions.length === 0 || settings.calendarFileExtensions.includes(
-                file.extension.toLocaleLowerCase()
-            ))
-            .forEach(file => {
-                if (settings.calendarMatchCreatedDate) {
-                    addMatch(formatCalendarDate(new Date(file.stat.ctime)), file);
-                }
-                if (settings.calendarMatchModifiedDate) {
-                    addMatch(formatCalendarDate(new Date(file.stat.mtime)), file);
-                }
-                if (settings.calendarMatchFrontmatter) {
-                    const frontmatter = this.plugin.app.metadataCache.getFileCache(file)?.frontmatter;
-                    settings.calendarFrontmatterKeys.forEach(key => {
-                        extractCalendarDateKeys(frontmatter?.[key]).forEach(dateKey => addMatch(dateKey, file));
-                    });
-                }
-                if (settings.calendarMatchFilename) {
-                    extractCalendarDateKeysFromFilename(file.basename, settings.calendarFilenamePatterns)
-                        .forEach(dateKey => addMatch(dateKey, file));
-                }
-            });
-
-        // Explicit creation associations remain discoverable even if the name,
-        // type, or directory differs from the general calendar matching rules.
-        Object.entries(settings.calendarCreatedNotes).forEach(([path, key]) => {
-            const file = this.plugin.app.vault.getAbstractFileByPath(path);
-            if (file instanceof TFile && !this.plugin.isHiddenByPattern(path)) addMatch(key, file);
-        });
-
-        const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
-        matches.forEach(files => files.sort((left, right) => collator.compare(left.path, right.path)));
-        return matches;
-    }
 
     private updateCalendarDateCells(): void {
         if (!this.calendarHostEl) {
             return;
         }
+        const busy = this.calendarMatching || Boolean(this.calendarMatchError);
+        this.calendarHostEl.setAttribute("aria-busy", String(this.calendarMatching));
+        let progress = this.calendarGridEl?.parentElement?.querySelector<HTMLElement>(".fcn-calendar-index-status");
+        if (!progress && this.calendarGridEl?.parentElement) {
+            progress = this.calendarGridEl.parentElement.createDiv({ cls: "fcn-calendar-index-status", attr: { role: "status", "aria-live": "polite" } });
+            this.calendarGridEl.before(progress);
+        }
+        const progressText = this.calendarMatchError || (this.calendarMatching ? "正在更新日期索引…" : "");
+        if (progress && progress.textContent !== progressText) progress.setText(progressText);
+        const showHolidays = this.plugin.settings.calendarShowHolidays;
+        this.calendarHostEl.toggleClass("fcn-calendar-with-holidays", showHolidays);
+        this.calendarGridEl?.toggleClass("fcn-calendar-holiday-grid", showHolidays);
+        let status = this.calendarGridEl?.parentElement?.querySelector<HTMLElement>(".fcn-holiday-status");
+        if (!status && this.calendarGridEl?.parentElement) {
+            status = this.calendarGridEl.parentElement.createDiv("fcn-holiday-status");
+            this.calendarGridEl.before(status);
+        }
+        const year = (this.calendar?.getDate() ?? new Date()).getFullYear();
+        const statusText = showHolidays && !this.plugin.holidays.availableYears.includes(year)
+            ? `${year} 年节假日数据尚未收录，可在日历设置中联网更新。` : "";
+        if (status && status.textContent !== statusText) status.setText(statusText);
         this.calendarHostEl.querySelectorAll<HTMLElement>(".fc-daygrid-day[data-date]").forEach(cell => {
             const dateKey = cell.dataset.date ?? "";
+            const holiday = showHolidays ? this.plugin.holidays.getCalendarDay(dateKey) : undefined;
+            cell.toggleClass("fcn-holiday-rest", Boolean(holiday?.isOffDay));
+            cell.toggleClass("fcn-holiday-work", Boolean(holiday && !holiday.isOffDay));
+            const frame = cell.querySelector<HTMLElement>(".fc-daygrid-day-frame");
+            const marker = cell.querySelector<HTMLElement>(".fcn-holiday-marker");
+            const name = cell.querySelector<HTMLElement>(".fcn-holiday-name");
+            if (holiday && frame && !cell.classList.contains("fc-day-other")) {
+                // Preserve nodes across resize/selection refreshes; rebuilding
+                // annotations needlessly dirties layout and can amplify observers.
+                const markerText = holiday.isOffDay ? "休" : "班";
+                if (!marker) frame.createSpan({ cls: "fcn-holiday-marker", text: markerText, attr: { "aria-hidden": "true" } });
+                else if (marker.textContent !== markerText) marker.setText(markerText);
+                if (holiday.isWeekend) name?.remove();
+                else if (!name) frame.createSpan({ cls: "fcn-holiday-name", text: holiday.name, attr: { "aria-hidden": "true" } });
+                else if (name.textContent !== holiday.name) name.setText(holiday.name);
+            } else {
+                marker?.remove(); name?.remove();
+            }
             const matchCount = this.calendarDateMatches.get(dateKey)?.length ?? 0;
             const hasMatches = matchCount > 0;
             cell.toggleClass("fcn-calendar-date-available", hasMatches);
@@ -2363,7 +2537,7 @@ class FolderColumnNavigatorView extends ItemView {
             cell.toggleClass("fcn-calendar-date-unavailable", !hasMatches && !this.plugin.settings.dailyNote.enabled);
             cell.toggleClass("fcn-calendar-date-creatable", !hasMatches && this.plugin.settings.dailyNote.enabled);
             cell.dataset.fcnMatchCount = hasMatches ? String(matchCount) : "";
-            cell.setAttribute("aria-disabled", String(!hasMatches && !this.plugin.settings.dailyNote.enabled));
+            cell.setAttribute("aria-disabled", String(busy || (!hasMatches && !this.plugin.settings.dailyNote.enabled)));
             if (dateKey === this.calendarSelectedDateKey) {
                 cell.setAttribute("aria-current", "date");
             } else {
@@ -2379,6 +2553,13 @@ class FolderColumnNavigatorView extends ItemView {
             );
             if (dayNumber) {
                 dayNumber.dataset.fcnMatchCount = hasMatches ? String(matchCount) : "";
+            }
+            if (holiday) {
+                const description = holiday.isWeekend
+                    ? `周末 · ${holiday.unknownSchedule ? "该年调休数据未收录，仅按周末标记" : "休息"}`
+                    : `${holiday.name} · ${holiday.isOffDay ? "放假" : "调休上班"}`;
+                cell.setAttribute("title", `${description}；${cell.getAttribute("title") ?? ""}`);
+                dayNumber?.setAttribute("aria-label", `${dayNumber.getAttribute("aria-label") ?? dateKey}，${description}`);
             }
         });
     }
@@ -2412,6 +2593,9 @@ class FolderColumnNavigatorView extends ItemView {
         if (!this.calendarResultsEl) {
             return;
         }
+        const previous = this.calendarResultsEl.querySelector<HTMLElement>(".fcn-calendar-results-list");
+        const scrollTop = previous?.dataset.date === this.calendarSelectedDateKey ? previous.scrollTop : 0;
+        this.calendarVirtualList?.dispose(); this.calendarVirtualList = null;
         this.calendarResultsEl.empty();
         this.calendarResultsEl.toggleClass("is-visible", this.isStandaloneCalendar && Boolean(this.calendarSelectedDateKey));
         if (!this.isStandaloneCalendar || !this.calendarSelectedDateKey) {
@@ -2427,9 +2611,10 @@ class FolderColumnNavigatorView extends ItemView {
         header.createSpan({ text: this.calendarSelectedDateKey, cls: "fcn-calendar-results-date" });
         header.createSpan({ text: `${files.length} 个文件`, cls: "fcn-calendar-results-count" });
         const list = this.calendarResultsEl.createDiv("fcn-calendar-results-list");
+        list.dataset.date = this.calendarSelectedDateKey;
         this.updateCalendarCreateAction();
-        files.forEach(file => {
-            const row = list.createEl("button", {
+        this.calendarVirtualList = new CalendarVirtualList(list, files, (file, parent) => {
+            const row = parent.createEl("button", {
                 cls: "fcn-file-item fcn-calendar-results-item",
                 attr: { type: "button", title: file.path, "aria-label": `打开 ${file.path}` }
             });
@@ -2441,7 +2626,10 @@ class FolderColumnNavigatorView extends ItemView {
             text.createSpan({ text: file.name, cls: "fcn-calendar-results-name" });
             text.createSpan({ text: file.parent?.path ?? this.plugin.app.vault.getName(), cls: "fcn-calendar-results-path" });
             row.addEventListener("click", () => void this.openFile(file));
+            return row;
         });
+        list.scrollTop = scrollTop;
+        this.calendarVirtualList.refresh();
     }
 
     private getCalendarWeekStart(date: Date): Date {
@@ -6197,7 +6385,9 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
         return this.createSettingDefinitions();
     }
 
-    /** Obsidian rebuilds the definitions when the tab opens. */
+    /** After the one-time layout-ready update, background event batches only
+     * rebuild definitions for a visible settings page. Opening a declarative
+     * tab alone renders its cached definitions; it does not re-evaluate them. */
     updateIfVisible(): void {
         if (this.containerEl?.isConnected && this.containerEl.getClientRects().length > 0) this.refreshSettingsTab();
     }
@@ -6822,6 +7012,34 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                     },
                     {
                         type: "group",
+                        heading: "中国大陆节假日与调休",
+                        items: [
+                            { name: "显示节假日", desc: "展示周末、节假日的休/班与名称；调休上班优先显示班。关闭仅隐藏标记，不影响工作日积木计算。", control: { type: "toggle", key: "calendarShowHolidays" } },
+                            { name: "允许联网更新", desc: "默认关闭。开启后可手动从 raw.githubusercontent.com 下载公开年度数据，不上传笔记内容。", control: { type: "toggle", key: "holidayOnlineUpdate" } },
+                            {
+                                name: "离线数据与更新",
+                                render: setting => {
+                                    const cache = this.plugin.settings.holidayCache;
+                                    const dates = Object.values(cache).map(entry => entry.updatedAt).sort();
+                                    setting.setDesc(`已收录：${this.plugin.holidays.availableYears.join("、")} 年。来源：holiday-cn（国务院公告整理，MIT）。${dates.length ? `最近更新：${new Date(dates[dates.length - 1]).toLocaleString()}。` : "尚无联网更新记录。"}跨年规则建议同时更新相邻年份；未发布或失败时保留旧数据。`);
+                                    let year = String(new Date().getFullYear());
+                                    setting.addText(text => text.setValue(year).setPlaceholder("更新年份").onChange(value => { year = value; }));
+                                    setting.addButton(button => button.setButtonText("更新该年数据").setDisabled(!this.plugin.settings.holidayOnlineUpdate).onClick(() => {
+                                        button.setDisabled(true);
+                                        void this.plugin.updateHolidayData(Number(year)).then(() => {
+                                            new Notice(`${year} 年节假日数据已更新。`);
+                                            this.refreshSettingsTab();
+                                        }).catch((error: unknown) => {
+                                            new Notice(error instanceof Error ? error.message : "更新失败，已保留离线数据。");
+                                            button.setDisabled(!this.plugin.settings.holidayOnlineUpdate);
+                                        });
+                                    }));
+                                }
+                            }
+                        ]
+                    },
+                    {
+                        type: "group",
                         heading: "创建每日笔记",
                         items: [{
                             name: "创建规则",
@@ -6832,7 +7050,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                 }, input => { new FolderPathInputSuggest(this.app, input, folder => {
                                     input.value = folder.path;
                                     input.dispatchEvent(new Event("input", { bubbles: true }));
-                                }); }, this.app);
+                                }); }, this.app, date => this.plugin.holidays.lastWorkdayOfWeek(date));
                             }
                         }]
                     }
@@ -6874,6 +7092,13 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
 
     private async applyControlValue(key: string, value: unknown): Promise<void> {
         switch (key) {
+            case "calendarShowHolidays":
+            case "holidayOnlineUpdate":
+                this.plugin.settings[key] = Boolean(value);
+                await this.plugin.saveData(this.plugin.settings);
+                this.plugin.refreshHolidayUi();
+                this.refreshSettingsTab();
+                return;
             case "rainbowFolders":
                 this.plugin.settings.rainbowFolders = Boolean(value);
                 this.plugin.applyThemeStyle();

@@ -59,6 +59,10 @@ const config = {
 };
 assert.equal(dailyNotePath(config, selected), "固定目录/2026/11/2026-11-16-2026-11-22/2026-11-16.md");
 assert.equal(expandDailyTemplate("{{weekStart:YYYY-MM-DD}}/{{weekEnd:YYYY-MM-DD}}", new Date(2027, 0, 1)), "2026-12-28/2027-01-03");
+assert.equal(expandDailyTemplate("{{weekFriday:YYYY-MM-DD}}", new Date(2026, 10, 17)), "2026-11-20");
+assert.equal(expandDailyTemplate("{{weekFriday:YYYY-MM-DD}}", new Date(2026, 10, 22)), "2026-11-20");
+assert.equal(expandDailyTemplate("{{weekFriday:YYYY-MM-DD}}", new Date(2026, 11, 31)), "2027-01-01");
+assert.equal(expandDailyTemplate("{{weekFriday:MM-DD}}", new Date(2026, 10, 20)), "11-20");
 assert.equal(expandDailyTemplate("{{date:YYYY-MM-DD}}", new Date(2028, 1, 29)), "2028-02-29");
 assert.equal(expandDailyTemplate("{{date:WW}}", new Date(2027, 0, 1)), "53");
 assert.equal(dailyNotePath({ ...config, type: "canvas" }, selected, "自定义名称"), "固定目录/2026/11/2026-11-16-2026-11-22/自定义名称.canvas");
@@ -123,10 +127,9 @@ async function testSaveAndMatchingPerformance() {
     const classes = main.statements.filter(ts.isClassDeclaration);
     const method = (className, methodName) => classes.find(item => item.name?.text === className).members
         .find(item => item.name?.getText(main) === methodName).getText(main);
-    const compiled = ts.transpileModule(`class Plugin { ${method("FolderColumnNavigator", "saveDailyNoteConfig")} }
-        class View { ${method("FolderColumnNavigatorView", "buildCalendarDateMatches")} }; ({Plugin,View})`,
+    const compiled = ts.transpileModule(`class Plugin { ${method("FolderColumnNavigator", "saveDailyNoteConfig")} }; ({Plugin})`,
         { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
-    const { Plugin, View } = vm.runInNewContext(compiled, { TFile, Intl, formatCalendarDate: date => moment(date).format("YYYY-MM-DD") });
+    const { Plugin } = vm.runInNewContext(compiled, { TFile });
     const plugin = new Plugin(); let uiUpdates = 0; let saves = 0;
     plugin.settings = { dailyNote: { ...DEFAULT_DAILY_NOTE } };
     plugin.views = new Set([{ refreshDailyNoteCreationUi: () => uiUpdates++, refresh: () => { throw Error("Unexpected full view refresh"); } }]);
@@ -141,22 +144,7 @@ async function testSaveAndMatchingPerformance() {
     await assert.rejects(plugin.saveDailyNoteConfig(DEFAULT_DAILY_NOTE));
     assert.equal(plugin.settings.dailyNote, previous);
 
-    const count = 173000;
-    const files = Array.from({ length: count }, (_, index) => Object.assign(new TFile(`notes/${index}.md`), {
-        extension: "md", basename: String(index), stat: { ctime: selected.getTime(), mtime: selected.getTime() }
-    }));
-    const view = new View();
-    view.plugin = {
-        settings: { calendarSearchPaths: [], calendarFileExtensions: [], calendarMatchCreatedDate: true,
-            calendarMatchModifiedDate: true, calendarCreatedNotes: { "notes/0.md": "2026-11-16" } },
-        isHiddenByPattern: () => false,
-        app: { vault: { getFiles: () => files, getAbstractFileByPath: () => files[0] } }
-    };
-    const started = Date.now();
-    const matches = view.buildCalendarDateMatches(new Date(2026, 10, 1), new Date(2026, 11, 1));
-    assert.equal(matches.get("2026-11-16").length, count);
-    assert.equal(new Set(matches.get("2026-11-16").map(file => file.path)).size, count);
-    console.log(`PASS: rule saving avoids global refresh, enable changes update only creation UI, failed save rolls back; ${count.toLocaleString()} same-date files matched and deduplicated in ${Date.now() - started}ms.`);
+    console.log("PASS: rule saving avoids global refresh, enable changes update only creation UI, failed save rolls back.");
 }
 testSaveAndMatchingPerformance().catch(error => { console.error(error); process.exitCode = 1; });
 
@@ -249,7 +237,8 @@ async function testDefaultProfile() {
     const load = pluginClass.members.find(node => node.name?.getText(main) === "loadSettings").getText(main);
     const { Plugin, defaults } = vm.runInNewContext(ts.transpileModule(`${declarations}\nclass Plugin {${load}}; ({Plugin,defaults:DEFAULT_SETTINGS})`,
         { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText,
-        { DEFAULT_DAILY_NOTE, cleanDailyNoteConfig, TFile, TFolder });
+        { DEFAULT_DAILY_NOTE, cleanDailyNoteConfig, TFile, TFolder,
+            cleanHolidayCache: () => ({}), MainlandHolidayCalendar: class {} });
     const make = data => {
         const plugin = new Plugin(); plugin.loadData = async () => data;
         plugin.getRootFolders = () => [];

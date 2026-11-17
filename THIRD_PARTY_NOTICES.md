@@ -56,6 +56,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## Bundled calendar data
+
+[holiday-cn](https://github.com/NateScarlet/holiday-cn) — MIT, Copyright (c) 2019 NateScarlet.
+The bundled 2025–2027 annual JSON datasets are distributed in `main.js` for offline mainland-China holiday and adjusted-workday lookup. The data retains its government announcement links in `papers`. The complete upstream license is included at [data/holidays/LICENSE](data/holidays/LICENSE); its copyright and MIT permission notice also appear in the release bundle banner. Optional user-initiated updates use the same upstream annual JSON format.
+
 ## Development-only dependencies
 
 These packages are used to type-check or bundle the source. They are not included in the release assets (`main.js`, `manifest.json`, and `styles.css`).

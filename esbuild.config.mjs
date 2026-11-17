@@ -16,6 +16,9 @@ const banner = `/*!
  * FullCalendar and Preact are licensed under MIT.
  * Copyright (c) 2021 Adam Shaw and 2015-present Jason Miller.
  *
+ * This bundle includes holiday-cn data, licensed under MIT.
+ * Copyright (c) 2019 NateScarlet.
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights

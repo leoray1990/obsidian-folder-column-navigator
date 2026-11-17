@@ -142,15 +142,18 @@ export async function createDailyNoteWithTemplate(app: App, config: DailyNoteCon
 }
 
 /** All dates are local calendar dates. ISO weeks start Monday, matching the calendar. */
-export function expandDailyTemplate(template: string, date: Date): string {
+export type WeekWorkdayResolver = (date: Date) => Date;
+export function expandDailyTemplate(template: string, date: Date, lastWorkday?: WeekWorkdayResolver): string {
     const selected = moment(date).startOf("day");
-    const expanded = template.replace(/\{\{(date|weekStart|weekEnd|today):([^{}]+)\}\}/g,
+    const expanded = template.replace(/\{\{(date|weekStart|weekEnd|weekFriday|weekLastWorkday|today):([^{}]+)\}\}/g,
         (_whole: string, source: string, format: string) => {
             const supported = format.replace(/YYYY|YY|MMMM|MMM|MM|M|DD|D|WW|W|dddd|ddd/g, "");
             if (/[A-Za-z{}]/.test(supported)) throw new Error("日期格式只支持年、月、日、星期和 ISO 周数。");
-            const target = source === "today" ? moment().startOf("day") : selected.clone();
+            if (source === "weekLastWorkday" && !lastWorkday) throw new Error("无法读取节假日数据，请重新打开插件设置。");
+            const target = source === "weekLastWorkday" ? moment(lastWorkday!(date)) : source === "today" ? moment().startOf("day") : selected.clone();
             if (source === "weekStart") target.startOf("isoWeek");
             if (source === "weekEnd") target.startOf("isoWeek").add(6, "days");
+            if (source === "weekFriday") target.startOf("isoWeek").add(4, "days");
             return target.format(format);
         });
     if (/[{}]/.test(expanded)) throw new Error("模板变量格式错误，请使用 {{date:YYYY-MM-DD}} 等支持的变量。");
@@ -158,10 +161,10 @@ export function expandDailyTemplate(template: string, date: Date): string {
 }
 
 /** Never normalize traversal or absolute paths into another valid vault location. */
-export function dailyNotePath(config: DailyNoteConfig, date: Date, editedName?: string): string {
-    const suffix = expandDailyTemplate(config.directory, date);
+export function dailyNotePath(config: DailyNoteConfig, date: Date, editedName?: string, lastWorkday?: WeekWorkdayResolver): string {
+    const suffix = expandDailyTemplate(config.directory, date, lastWorkday);
     const base = config.baseDirectory ?? "";
-    const name = editedName ?? expandDailyTemplate(config.name, date);
+    const name = editedName ?? expandDailyTemplate(config.name, date, lastWorkday);
     const invalid = (segment: string): boolean => !segment.trim() || segment === "." || segment === ".." ||
         /[\\:*?"<>|\u0000-\u001f]/.test(segment) || /[. ]$/.test(segment);
     if (name.includes("/") || invalid(name)) throw new Error("笔记名称不能为空，也不能包含目录分隔符或非法字符。");
@@ -172,12 +175,14 @@ export function dailyNotePath(config: DailyNoteConfig, date: Date, editedName?: 
     return `${directory ? `${directory}/` : ""}${name}.${config.type}`;
 }
 
-const SOURCES = { date: "选中日期", weekStart: "周开始", weekEnd: "周结束", today: "今天（创建当天）" };
+const SOURCES = { date: "选中日期", weekStart: "周开始", weekEnd: "周结束", weekFriday: "周五", weekLastWorkday: "本周最后一个工作日", today: "今天（创建当天）" };
 const FORMATS = { YYYY: "四位年", YY: "两位年", MM: "两位月", M: "月份", MMMM: "月份名称", DD: "两位日", D: "日期", WW: "两位周数", W: "周数", dddd: "星期" };
 const TOKENS: Array<[string, string]> = [
     ["年", "{{date:YYYY}}"], ["月", "{{date:MM}}"], ["日", "{{date:DD}}"],
     ["周数", "{{date:WW}}"], ["星期", "{{date:dddd}}"],
     ["周开始", "{{weekStart:MM-DD}}"], ["周结束", "{{weekEnd:MM-DD}}"],
+    ["周五", "{{weekFriday:MM-DD}}"],
+    ["本周最后一个工作日", "{{weekLastWorkday:MM-DD}}"],
     ["周开始年", "{{weekStart:YYYY}}"], ["周开始月", "{{weekStart:MM}}"], ["周开始日", "{{weekStart:DD}}"],
     ["周结束年", "{{weekEnd:YYYY}}"], ["周结束月", "{{weekEnd:MM}}"], ["周结束日", "{{weekEnd:DD}}"],
     ["连接符 -", "-"], ["下划线 _", "_"], ["空格", " "], ["固定文字", "日记"]
@@ -206,7 +211,7 @@ function splitBlocks(template: string): string[] {
     return template.match(/\{\{[^{}]+\}\}|[^{}/\-_ ]+|[/\-_ ]|[{}]/g) ?? [];
 }
 function label(block: string): string {
-    const token = /^\{\{(date|weekStart|weekEnd|today):(.+)\}\}$/.exec(block);
+    const token = /^\{\{(date|weekStart|weekEnd|weekFriday|weekLastWorkday|today):(.+)\}\}$/.exec(block);
     return token ? `${SOURCES[token[1] as keyof typeof SOURCES]} · ${FORMATS[token[2] as keyof typeof FORMATS] ?? token[2]}` :
         block === " " ? "空格" : block;
 }
@@ -229,7 +234,7 @@ export function renderDailyNoteEditor(
     container: HTMLElement, config: DailyNoteConfig,
     save: (next: DailyNoteConfig) => Promise<void>,
     suggestBaseDirectory: (input: HTMLInputElement) => void,
-    app: App
+    app: App, lastWorkday?: WeekWorkdayResolver
 ): void {
     const draft = { ...config };
     let saved = { ...config };
@@ -282,7 +287,7 @@ export function renderDailyNoteEditor(
             try {
                 if (invalidLiteral) throw new Error("固定文字不能为空，不能包含目录分隔符、模板括号或文件名非法字符。");
                 validateDailyTemplate(app, draft);
-                preview.setText(dailyNotePath(draft, sample)); preview.removeClass("is-error"); return true;
+                preview.setText(dailyNotePath(draft, sample, undefined, lastWorkday)); preview.removeClass("is-error"); return true;
             }
             catch (error) { preview.setText(error instanceof Error ? error.message : "模板无效"); preview.addClass("is-error"); return false; }
         };
@@ -366,10 +371,10 @@ export function renderDailyNoteEditor(
             if (selected?.key === key && blocks[selected.index] !== undefined) {
                 const index = selected.index;
                 const block = blocks[index];
-                const token = /^\{\{(date|weekStart|weekEnd|today):(.+)\}\}$/.exec(block);
+                const token = /^\{\{(date|weekStart|weekEnd|weekFriday|weekLastWorkday|today):(.+)\}\}$/.exec(block);
                 const edit = new Setting(root).setName("选中组件");
                 if (token) {
-                    edit.setDesc("选中日期＝日历中点击的日期；周开始/结束＝该日期所在周；今天＝实际创建当天。格式只能在同类单位内切换，复杂格式请使用高级模板。");
+                    edit.setDesc("选中日期＝日历中点击的日期；周开始/结束/周五＝该日期所在自然周的对应日期，不按调休调整；今天＝实际创建当天。格式只能在同类单位内切换，复杂格式请使用高级模板。");
                     edit.addDropdown(dropdown => dropdown.addOptions(SOURCES).setValue(token[1]).onChange(value => { blocks[index] = `{{${value}:${token[2]}}}`; replace(blocks); }));
                     edit.addDropdown(dropdown => dropdown.addOptions(dailyFormatOptions(token[2])).setValue(token[2]).onChange(value => {
                         blocks[index] = `{{${token[1]}:${value}}}`; replace(blocks);
@@ -431,7 +436,7 @@ export function renderDailyNoteEditor(
                 });
             });
         });
-        root.createDiv({ cls: "fcn-daily-hint", text: "日期取日历选中日；周从周一开始。变量支持 date、weekStart、weekEnd、today；例如 {{weekStart:YYYY-MM-DD}}。拖拽可排序，也可使用左右移动按钮。" });
+        root.createDiv({ cls: "fcn-daily-hint", text: "日期取日历选中日，周从周一开始。周五不受调休影响；本周最后一个工作日按中国大陆节假日和调休计算，全周休假或缺少年度数据时提示错误。高级变量：{{weekLastWorkday:YYYY-MM-DD}}。拖拽可排序，也可使用左右移动按钮。" });
         new Setting(root).setName("文件类型").addDropdown(dropdown => dropdown.addOptions({ md: "Markdown (.md)", canvas: "Canvas (.canvas)", base: "Base (.base)" })
             .setValue(draft.type).onChange(value => { draft.type = value as DailyNoteType; draw(); }));
         if (draft.type === "md") {
@@ -448,13 +453,21 @@ export function renderDailyNoteEditor(
                     });
             }
         } else root.createDiv({ cls: "fcn-daily-hint", text: "Canvas / Base 不应用 Markdown 模板，继续使用有效的初始内容。已选模板配置会保留。" });
-        const status = root.createDiv("fcn-daily-hint");
         new Setting(root).addButton(button => button.setButtonText("保存创建规则").setCta().onClick(() => {
             if (!validate()) return;
             button.setDisabled(true);
-            void save({ ...draft }).then(() => { saved = { ...draft }; status.setText("已保存"); }).catch(error => {
-                status.setText(error instanceof Error ? error.message : "保存失败，请重试");
-            }).finally(() => button.setDisabled(false));
+            void save({ ...draft }).then(() => {
+                saved = { ...draft };
+                new Notice("创建规则已保存", 2000);
+            }).catch(error => {
+                new Notice(error instanceof Error ? error.message : "保存失败，请重试", 5000);
+            }).finally(() => {
+                // Obsidian components implement fluent then(callback). Returning
+                // a component from a Promise callback causes recursive thenable
+                // assimilation and an infinite microtask loop in the renderer.
+                // Always return void from async cleanup callbacks.
+                button.setDisabled(false);
+            });
         }));
         validate();
     };
@@ -464,11 +477,11 @@ export function renderDailyNoteEditor(
 /** Creation is always confirmed, rechecked for collisions, and never overwrites. */
 export class CreateDailyNoteModal extends Modal {
     constructor(app: App, private config: DailyNoteConfig, private date: Date,
-        private created: (file: TFile) => Promise<void>) { super(app); }
+        private created: (file: TFile) => Promise<void>, private lastWorkday?: WeekWorkdayResolver) { super(app); }
     onOpen(): void {
         this.setTitle("创建每日笔记");
         let name: string;
-        try { name = expandDailyTemplate(this.config.name, this.date); dailyNotePath(this.config, this.date); validateDailyTemplate(this.app, this.config); }
+        try { name = expandDailyTemplate(this.config.name, this.date, this.lastWorkday); dailyNotePath(this.config, this.date, undefined, this.lastWorkday); validateDailyTemplate(this.app, this.config); }
         catch (error) { this.contentEl.createEl("p", { text: error instanceof Error ? error.message : "创建规则无效，请检查日历设置。" }); return; }
         this.contentEl.createEl("p", { text: `日期：${moment(this.date).format("YYYY-MM-DD")} · 类型：.${this.config.type}` });
         if (this.config.type === "md" && this.config.templateSource !== "none") this.contentEl.createEl("p", {
@@ -481,7 +494,7 @@ export class CreateDailyNoteModal extends Modal {
         let path = ""; let busy = false;
         const validate = (): boolean => {
             try {
-                path = dailyNotePath(this.config, this.date, name); pathEl.setText(path);
+                path = dailyNotePath(this.config, this.date, name, this.lastWorkday); pathEl.setText(path);
                 const occupied = this.app.vault.getAbstractFileByPath(path);
                 openExisting?.setDisabled(!(occupied instanceof TFile));
                 errorEl.setText(occupied ? "同名文件或目录已存在；请修改名称，或打开已有文件。" : "不存在的目录将自动创建。");

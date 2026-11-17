@@ -1,9 +1,9 @@
 {
   "name": "folder-column-navigator",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "private": true,
   "scripts": {
-    "test:daily-note": "node scripts/test-daily-note.cjs && node scripts/test-daily-editor.cjs",
+    "test:daily-note": "node scripts/test-daily-note.cjs && node scripts/test-daily-editor.cjs && node scripts/test-component-promises.cjs && node scripts/test-holidays.cjs && node scripts/test-startup-settings.cjs && node scripts/test-calendar-index.cjs",
     "build": "tsc -p tsconfig.json --noEmit -skipLibCheck && node esbuild.config.mjs production",
     "dev": "node esbuild.config.mjs"
   },

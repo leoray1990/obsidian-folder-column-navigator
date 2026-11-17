@@ -291,6 +291,7 @@ settings:
 
 .fcn-calendar-week-number {
     display: flex;
+    flex: 1 0 34px;
     min-height: 34px;
     align-items: center;
     justify-content: center;
@@ -303,6 +304,46 @@ settings:
     min-width: 0;
     max-width: 100%;
 }
+
+/* A stable second line for all dates keeps weeks aligned when holidays change.
+ * Markers are pointer-transparent; clicking the label still selects its date. */
+.folder-column-navigator-view .fcn-calendar-content .fcn-calendar-with-holidays.fc .fc-daygrid-day-frame {
+    min-height: 48px;
+    padding-bottom: 14px;
+    position: relative;
+}
+.folder-column-navigator-view .fcn-calendar-with-holidays .fcn-holiday-marker {
+    position: absolute;
+    top: 1px;
+    right: 2px;
+    font-size: 9px;
+    line-height: 12px;
+    color: var(--color-red);
+    pointer-events: none;
+}
+.folder-column-navigator-view .fcn-calendar-with-holidays .fcn-holiday-work .fcn-holiday-marker {
+    color: var(--color-blue);
+}
+.folder-column-navigator-view .fcn-calendar-with-holidays .fcn-holiday-name {
+    position: absolute;
+    bottom: 1px;
+    inset-inline: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: center;
+    font-size: 9px;
+    line-height: 12px;
+    color: var(--text-muted);
+    pointer-events: none;
+}
+.folder-column-navigator-view .fcn-holiday-status {
+    font-size: var(--font-smallest);
+    color: var(--text-muted);
+    padding: 4px 8px;
+}
+.folder-column-navigator-view .fcn-holiday-status:empty { display: none; }
+.folder-column-navigator-view .fcn-calendar-holiday-grid .fcn-calendar-week-number { min-height: 48px; }
 
 .folder-column-navigator-view .fcn-calendar-content .fc .fc-view-harness,
 .folder-column-navigator-view .fcn-calendar-content .fc .fc-scrollgrid {
@@ -497,6 +538,20 @@ settings:
     overflow-y: auto;
     background: var(--background-primary);
 }
+
+.fcn-calendar-virtual-list { flex: 0 0 auto; min-width: 0; width: 100%; }
+.fcn-calendar-virtual-window { display: flex; flex-direction: column; min-width: 0; }
+.fcn-calendar-virtual-spacer { height: var(--fcn-calendar-virtual-space, 0px); pointer-events: none; }
+.fcn-calendar-virtual-window > .fcn-calendar-virtual-row {
+    flex: 0 0 auto;
+    box-sizing: border-box;
+    width: 100%;
+    height: var(--fcn-calendar-virtual-row-height, auto);
+    min-height: var(--fcn-calendar-virtual-row-height, 42px);
+}
+.fcn-calendar-index-status { padding: 4px 8px; color: var(--text-muted); font-size: var(--font-smallest); }
+.fcn-calendar-index-status:empty { display: none; }
+.fcn-calendar-host[aria-busy="true"] .fc-daygrid-day { cursor: progress; }
 
 .folder-column-navigator-view .fcn-calendar-results-item {
     justify-content: flex-start;
