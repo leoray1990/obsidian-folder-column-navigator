@@ -1974,10 +1974,14 @@ class FolderColumnNavigatorView extends ItemView {
             return;
         }
         this.topRootFolderPane = layout.createDiv("fcn-top-root-folder-pane");
+        // Both root-navigation layouts list directories under the vault root;
+        // their background must not inherit the last selected child directory.
+        this.enableDirectoryContextMenu(this.topRootFolderPane, this.plugin.app.vault.getRoot());
         this.shellEl = layout.createDiv("fcn-shell");
         this.applyNavigationWidth(this.resizeWidth);
 
         const navigationPane = this.shellEl.createDiv("fcn-navigation-pane");
+        this.enableDirectoryContextMenu(navigationPane, this.plugin.app.vault.getRoot());
         const navigationHeader = navigationPane.createDiv("fcn-pane-header");
         const navigationActions = navigationHeader.createDiv("fcn-pane-actions");
         this.sideNavigationFilterButton = this.createNavigationFilterButton(navigationActions);
@@ -3447,6 +3451,7 @@ class FolderColumnNavigatorView extends ItemView {
         }
 
         const column = this.columnsEl.createDiv("fcn-column");
+        this.enableDirectoryContextMenu(column, folder, columnIndex);
         column.toggleClass("fcn-vertical-tree-column", this.isVerticalTreeColumn(columnIndex));
         column.dataset.fcnColumn = String(columnIndex);
         column.dataset.fcnPath = path;
@@ -3525,6 +3530,30 @@ class FolderColumnNavigatorView extends ItemView {
             });
         });
         this.updateColumnPreferredWidth(column, path);
+    }
+
+    /** Cover the full directory surface, including headers, padding and empty states. */
+    private enableDirectoryContextMenu(container: HTMLElement, folder: TFolder, columnIndex?: number): void {
+        container.tabIndex = -1;
+        container.addEventListener("contextmenu", event => {
+            const target = event.targetNode?.instanceOf(Element) ? event.targetNode : null;
+            // Row/group handlers bubble here too. Never replace their menus or
+            // turn a toolbar/filter/resize control into a background action.
+            if (!target || target.closest(
+                ".fcn-navigation-item, .fcn-file-item, .fcn-item-group-header, button, input, select, textarea, [role='separator']"
+            )) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            if (columnIndex !== undefined) {
+                this.activeColumnIndex = columnIndex;
+                this.renderHeader();
+            }
+            container.focus({ preventScroll: true });
+            // Omit the child-row column index: this directory is already open.
+            this.showFolderContextMenu(folder, container, event);
+        });
     }
 
     private renderVerticalTreeItems(
