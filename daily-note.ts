@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { AbstractInputSuggest, App, Modal, Notice, Setting, TFile, TFolder, moment as obsidianMoment } from "obsidian";
 import type momentFactory from "moment";
 // Obsidian exports its shared Moment function with namespace typings.
@@ -16,7 +17,7 @@ export interface DailyNoteConfig {
     templatePath: string;
 }
 export const DEFAULT_DAILY_NOTE: DailyNoteConfig = {
-    enabled: true, baseDirectory: "日记", directory: "", name: "{{date:YYYY-MM-DD}}", type: "md",
+    enabled: true, baseDirectory: t("日记"), directory: "", name: "{{date:YYYY-MM-DD}}", type: "md",
     templateSource: "none", templatePath: ""
 };
 export function cleanDailyNoteConfig(value: Partial<DailyNoteConfig> | undefined): DailyNoteConfig {
@@ -72,11 +73,11 @@ export function renderObsidianDailyTemplate(content: string, title: string, date
 export function validateDailyTemplate(app: App, config: DailyNoteConfig): TFile | null {
     if (config.type !== "md" || !config.templateSource || config.templateSource === "none") return null;
     const file = app.vault.getAbstractFileByPath(config.templatePath);
-    if (!(file instanceof TFile) || file.extension.toLowerCase() !== "md") throw new Error("请选择当前仓库中存在的 Markdown 模板文件。");
+    if (!(file instanceof TFile) || file.extension.toLowerCase() !== "md") throw new Error(t("请选择当前仓库中存在的 Markdown 模板文件。"));
     if (config.templateSource === "templater") {
         const plugin = templateAccess(app).plugins?.getPlugin?.("templater-obsidian");
         if (typeof plugin?.templater?.create_new_note_from_template !== "function") {
-            throw new Error("Templater 未启用，或当前版本不支持模板创建接口。请先启用或更新 Templater。");
+            throw new Error(t("Templater 未启用，或当前版本不支持模板创建接口。请先启用或更新 Templater。"));
         }
     }
     return file;
@@ -115,17 +116,17 @@ export class DailyTemplateFileSuggest extends AbstractInputSuggest<TFile> {
  * and lifecycle cleanup. Never run it again through an overwrite command. */
 export async function createDailyNoteWithTemplate(app: App, config: DailyNoteConfig, date: Date,
     path: string, template: TFile | null): Promise<TFile> {
-    if (app.vault.getAbstractFileByPath(path)) throw new Error("同名文件已存在，未覆盖。请修改名称。");
+    if (app.vault.getAbstractFileByPath(path)) throw new Error(t("同名文件已存在，未覆盖。请修改名称。"));
     const filename = path.slice(path.lastIndexOf("/") + 1);
     if (template && config.templateSource === "templater" && config.type === "md") {
         const plugin = templateAccess(app).plugins?.getPlugin?.("templater-obsidian");
         const engine = plugin?.templater;
-        if (typeof engine?.create_new_note_from_template !== "function") throw new Error("Templater 已停用，请重新启用后再创建。");
+        if (typeof engine?.create_new_note_from_template !== "function") throw new Error(t("Templater 已停用，请重新启用后再创建。"));
         const folderPath = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
         const folder = folderPath ? app.vault.getAbstractFileByPath(folderPath) : app.vault.getRoot();
-        if (!(folder instanceof TFolder)) throw new Error("目标目录不存在。");
+        if (!(folder instanceof TFolder)) throw new Error(t("目标目录不存在。"));
         const file = await engine.create_new_note_from_template(template, folder, filename.slice(0, -3), false);
-        if (!(file instanceof TFile)) throw new Error("Templater 创建失败或已取消，请检查 Templater 的错误提示；不会改为空白笔记继续创建。");
+        if (!(file instanceof TFile)) throw new Error(t("Templater 创建失败或已取消，请检查 Templater 的错误提示；不会改为空白笔记继续创建。"));
         return file;
     }
     let content: string;
@@ -137,7 +138,7 @@ export async function createDailyNoteWithTemplate(app: App, config: DailyNoteCon
     } else content = `---\ndate: ${moment(date).format("YYYY-MM-DD")}\n---\n`;
     // A template read may have yielded long enough for another action to create
     // the target. Recheck before writing, and rely on vault.create's no-overwrite contract.
-    if (app.vault.getAbstractFileByPath(path)) throw new Error("同名文件已存在，未覆盖。请修改名称。");
+    if (app.vault.getAbstractFileByPath(path)) throw new Error(t("同名文件已存在，未覆盖。请修改名称。"));
     return app.vault.create(path, content);
 }
 
@@ -148,15 +149,15 @@ export function expandDailyTemplate(template: string, date: Date, lastWorkday?: 
     const expanded = template.replace(/\{\{(date|weekStart|weekEnd|weekFriday|weekLastWorkday|today):([^{}]+)\}\}/g,
         (_whole: string, source: string, format: string) => {
             const supported = format.replace(/YYYY|YY|MMMM|MMM|MM|M|DD|D|WW|W|dddd|ddd/g, "");
-            if (/[A-Za-z{}]/.test(supported)) throw new Error("日期格式只支持年、月、日、星期和 ISO 周数。");
-            if (source === "weekLastWorkday" && !lastWorkday) throw new Error("无法读取节假日数据，请重新打开插件设置。");
+            if (/[A-Za-z{}]/.test(supported)) throw new Error(t("日期格式只支持年、月、日、星期和 ISO 周数。"));
+            if (source === "weekLastWorkday" && !lastWorkday) throw new Error(t("无法读取节假日数据，请重新打开插件设置。"));
             const target = source === "weekLastWorkday" ? moment(lastWorkday!(date)) : source === "today" ? moment().startOf("day") : selected.clone();
             if (source === "weekStart") target.startOf("isoWeek");
             if (source === "weekEnd") target.startOf("isoWeek").add(6, "days");
             if (source === "weekFriday") target.startOf("isoWeek").add(4, "days");
             return target.format(format);
         });
-    if (/[{}]/.test(expanded)) throw new Error("模板变量格式错误，请使用 {{date:YYYY-MM-DD}} 等支持的变量。");
+    if (/[{}]/.test(expanded)) throw new Error(t("模板变量格式错误，请使用 {{date:YYYY-MM-DD}} 等支持的变量。"));
     return expanded;
 }
 
@@ -167,30 +168,30 @@ export function dailyNotePath(config: DailyNoteConfig, date: Date, editedName?: 
     const name = editedName ?? expandDailyTemplate(config.name, date, lastWorkday);
     const invalid = (segment: string): boolean => !segment.trim() || segment === "." || segment === ".." ||
         /[\\:*?"<>|\u0000-\u001f]/.test(segment) || /[. ]$/.test(segment);
-    if (name.includes("/") || invalid(name)) throw new Error("笔记名称不能为空，也不能包含目录分隔符或非法字符。");
-    if (/[{}]/.test(base) || (base && base.split("/").some(invalid))) throw new Error("基础目录必须是有效的仓库相对目录，不支持日期变量。");
-    if (suffix && suffix.split("/").some(invalid)) throw new Error("目录包含空层级、相对路径或非法字符。");
+    if (name.includes("/") || invalid(name)) throw new Error(t("笔记名称不能为空，也不能包含目录分隔符或非法字符。"));
+    if (/[{}]/.test(base) || (base && base.split("/").some(invalid))) throw new Error(t("基础目录必须是有效的仓库相对目录，不支持日期变量。"));
+    if (suffix && suffix.split("/").some(invalid)) throw new Error(t("目录包含空层级、相对路径或非法字符。"));
     const directory = [base, suffix].filter(Boolean).join("/");
-    if (directory && directory.split("/").some(invalid)) throw new Error("目录包含空层级、相对路径或非法字符。");
+    if (directory && directory.split("/").some(invalid)) throw new Error(t("目录包含空层级、相对路径或非法字符。"));
     return `${directory ? `${directory}/` : ""}${name}.${config.type}`;
 }
 
-const SOURCES = { date: "选中日期", weekStart: "周开始", weekEnd: "周结束", weekFriday: "周五", weekLastWorkday: "本周最后一个工作日", today: "今天（创建当天）" };
-const FORMATS = { YYYY: "四位年", YY: "两位年", MM: "两位月", M: "月份", MMMM: "月份名称", DD: "两位日", D: "日期", WW: "两位周数", W: "周数", dddd: "星期" };
+const SOURCES = { date: t("选中日期"), weekStart: t("周开始"), weekEnd: t("周结束"), weekFriday: t("周五"), weekLastWorkday: t("本周最后一个工作日"), today: t("今天（创建当天）") };
+const FORMATS = { YYYY: t("四位年"), YY: t("两位年"), MM: t("两位月"), M: t("月份"), MMMM: t("月份名称"), DD: t("两位日"), D: t("日期"), WW: t("两位周数"), W: t("周数"), dddd: t("星期") };
 const TOKENS: Array<[string, string]> = [
-    ["年", "{{date:YYYY}}"], ["月", "{{date:MM}}"], ["日", "{{date:DD}}"],
-    ["周数", "{{date:WW}}"], ["星期", "{{date:dddd}}"],
-    ["周开始", "{{weekStart:MM-DD}}"], ["周结束", "{{weekEnd:MM-DD}}"],
-    ["周五", "{{weekFriday:MM-DD}}"],
-    ["本周最后一个工作日", "{{weekLastWorkday:MM-DD}}"],
-    ["周开始年", "{{weekStart:YYYY}}"], ["周开始月", "{{weekStart:MM}}"], ["周开始日", "{{weekStart:DD}}"],
-    ["周结束年", "{{weekEnd:YYYY}}"], ["周结束月", "{{weekEnd:MM}}"], ["周结束日", "{{weekEnd:DD}}"],
-    ["连接符 -", "-"], ["下划线 _", "_"], ["空格", " "], ["固定文字", "日记"]
+    [t("年"), "{{date:YYYY}}"], [t("月"), "{{date:MM}}"], [t("日"), "{{date:DD}}"],
+    [t("周数"), "{{date:WW}}"], [t("星期"), "{{date:dddd}}"],
+    [t("周开始"), "{{weekStart:MM-DD}}"], [t("周结束"), "{{weekEnd:MM-DD}}"],
+    [t("周五"), "{{weekFriday:MM-DD}}"],
+    [t("本周最后一个工作日"), "{{weekLastWorkday:MM-DD}}"],
+    [t("周开始年"), "{{weekStart:YYYY}}"], [t("周开始月"), "{{weekStart:MM}}"], [t("周开始日"), "{{weekStart:DD}}"],
+    [t("周结束年"), "{{weekEnd:YYYY}}"], [t("周结束月"), "{{weekEnd:MM}}"], [t("周结束日"), "{{weekEnd:DD}}"],
+    [t("连接符 -"), "-"], [t("下划线 _"), "_"], [t("空格"), " "], [t("固定文字"), t("日记")]
 ];
 const PRESETS: Record<string, [string, string]> = {
-    "按年月": ["日记/{{date:YYYY}}/{{date:MM}}", "{{date:YYYY-MM-DD}}"],
-    "平铺日期": ["日记", "{{date:YYYY-MM-DD}}"],
-    "按年月周": ["日记/{{date:YYYY}}/{{date:MM}}/{{weekStart:MM-DD}}-{{weekEnd:MM-DD}}", "{{date:YYYY-MM-DD}}"]
+    [t("按年月")]: [t("日记/{{date:YYYY}}/{{date:MM}}"), "{{date:YYYY-MM-DD}}"],
+    [t("平铺日期")]: [t("日记"), "{{date:YYYY-MM-DD}}"],
+    [t("按年月周")]: [t("日记/{{date:YYYY}}/{{date:MM}}/{{weekStart:MM-DD}}-{{weekEnd:MM-DD}}"), "{{date:YYYY-MM-DD}}"]
 };
 
 /** DOM replacement briefly collapses settings content. Restore ancestor scroll
@@ -213,7 +214,7 @@ function splitBlocks(template: string): string[] {
 function label(block: string): string {
     const token = /^\{\{(date|weekStart|weekEnd|weekFriday|weekLastWorkday|today):(.+)\}\}$/.exec(block);
     return token ? `${SOURCES[token[1] as keyof typeof SOURCES]} · ${FORMATS[token[2] as keyof typeof FORMATS] ?? token[2]}` :
-        block === " " ? "空格" : block;
+        block === " " ? t("空格") : block;
 }
 
 /** Literals cannot smuggle a directory boundary or a template variable into a chip. */
@@ -226,7 +227,7 @@ export function dailyFormatOptions(format: string): Record<string, string> {
     const families = [["YYYY", "YY"], ["MM", "M", "MMM", "MMMM"], ["DD", "D"], ["WW", "W"], ["dddd", "ddd"], ["MM-DD", "M-D", "MMDD"]];
     const family = families.find(values => values.includes(format));
     return family ? Object.fromEntries(family.map(value => [value, `${FORMATS[value as keyof typeof FORMATS] ?? value} (${value})`])) :
-        { [format]: `高级模板格式：${format}` };
+        { [format]: t("高级模板格式：{0}", [format]) };
 }
 
 /** Draft-only editor: saving is explicit, so incomplete templates never become active. */
@@ -239,7 +240,7 @@ export function renderDailyNoteEditor(
     const draft = { ...config };
     let saved = { ...config };
     let savingEnabled = false;
-    let presetChoice = "按年月";
+    let presetChoice = t("按年月");
     let advanced = false;
     let sample = new Date();
     let selected: { key: "directory" | "name"; index: number } | null = null;
@@ -252,7 +253,7 @@ export function renderDailyNoteEditor(
     const render = (): void => {
         root.empty();
         let invalidLiteral = false;
-        new Setting(root).setName("启用每日笔记创建").addToggle(toggle => toggle.setValue(draft.enabled).setDisabled(savingEnabled).onChange(value => {
+        new Setting(root).setName(t("启用每日笔记创建")).addToggle(toggle => toggle.setValue(draft.enabled).setDisabled(savingEnabled).onChange(value => {
             const previous = draft.enabled;
             draft.enabled = value;
             savingEnabled = true;
@@ -260,17 +261,17 @@ export function renderDailyNoteEditor(
             const next = { ...saved, enabled: value };
             void save(next).then(() => { saved = next; }).catch(error => {
                 draft.enabled = previous;
-                new Notice(error instanceof Error ? error.message : "保存失败，请重试。");
+                new Notice(error instanceof Error ? error.message : t("保存失败，请重试。"));
             }).finally(() => { savingEnabled = false; draw(); });
         }));
         if (!draft.enabled) return;
         const applyPreset = (): void => {
             const [directory, name] = PRESETS[presetChoice];
-            draft.baseDirectory = "日记";
-            draft.directory = directory === "日记" ? "" : directory.slice("日记/".length);
+            draft.baseDirectory = t("日记");
+            draft.directory = directory === t("日记") ? "" : directory.slice(t("日记/").length);
             draft.name = name; selected = null; draw();
         };
-        new Setting(root).setName("常用方案").setDesc("选择方案后仍可自由编辑；已有自定义规则不会自动被覆盖，点击“应用方案”可重新应用当前选项。")
+        new Setting(root).setName(t("常用方案")).setDesc(t("选择方案后仍可自由编辑；已有自定义规则不会自动被覆盖，点击“应用方案”可重新应用当前选项。"))
             .addDropdown(dropdown => {
             Object.keys(PRESETS).forEach(name => dropdown.addOption(name, name));
             dropdown.setValue(presetChoice);
@@ -278,28 +279,28 @@ export function renderDailyNoteEditor(
                 if (!PRESETS[value]) return;
                 presetChoice = value; applyPreset();
             });
-        }).addButton(button => button.setButtonText("应用方案").onClick(applyPreset));
-        new Setting(root).setName("编辑方式").addDropdown(dropdown => dropdown
-            .addOptions({ blocks: "积木组合", advanced: "高级模板" })
+        }).addButton(button => button.setButtonText(t("应用方案")).onClick(applyPreset));
+        new Setting(root).setName(t("编辑方式")).addDropdown(dropdown => dropdown
+            .addOptions({ blocks: t("积木组合"), advanced: t("高级模板") })
             .setValue(advanced ? "advanced" : "blocks").onChange(value => { advanced = value === "advanced"; draw(); }));
         const preview = root.createDiv("fcn-daily-preview");
         const validate = (): boolean => {
             try {
-                if (invalidLiteral) throw new Error("固定文字不能为空，不能包含目录分隔符、模板括号或文件名非法字符。");
+                if (invalidLiteral) throw new Error(t("固定文字不能为空，不能包含目录分隔符、模板括号或文件名非法字符。"));
                 validateDailyTemplate(app, draft);
                 preview.setText(dailyNotePath(draft, sample, undefined, lastWorkday)); preview.removeClass("is-error"); return true;
             }
-            catch (error) { preview.setText(error instanceof Error ? error.message : "模板无效"); preview.addClass("is-error"); return false; }
+            catch (error) { preview.setText(error instanceof Error ? error.message : t("模板无效")); preview.addClass("is-error"); return false; }
         };
-        new Setting(root).setName("预览日期").addText(text => {
+        new Setting(root).setName(t("预览日期")).addText(text => {
             text.inputEl.type = "date"; text.setValue(moment(sample).format("YYYY-MM-DD"));
             text.onChange(value => { const date = moment(value, "YYYY-MM-DD", true); if (date.isValid()) { sample = date.toDate(); validate(); } });
         });
         root.append(preview);
         (["directory", "name"] as const).forEach(key => {
-            new Setting(root).setName(key === "directory" ? "笔记目录" : "笔记名称").setHeading();
+            new Setting(root).setName(key === "directory" ? t("笔记目录") : t("笔记名称")).setHeading();
             const editBase = (): void => {
-                new Setting(root).setName("基础目录").setDesc("固定在目录组合最左侧，支持当前仓库目录提示，也可填写尚未创建的目录；清空表示仓库根目录。与后续目录自动以 / 连接。")
+                new Setting(root).setName(t("基础目录")).setDesc(t("固定在目录组合最左侧，支持当前仓库目录提示，也可填写尚未创建的目录；清空表示仓库根目录。与后续目录自动以 / 连接。"))
                     .addText(text => {
                         text.setValue(draft.baseDirectory).onChange(value => { draft.baseDirectory = value; validate(); });
                         suggestBaseDirectory(text.inputEl);
@@ -309,7 +310,7 @@ export function renderDailyNoteEditor(
                 if (key === "directory") editBase();
                 const input = root.createEl("textarea", { cls: "fcn-daily-template" });
                 input.value = draft[key];
-                input.setAttribute("aria-label", key === "directory" ? "目录模板" : "名称模板");
+                input.setAttribute("aria-label", key === "directory" ? t("目录模板") : t("名称模板"));
                 input.addEventListener("input", () => { draft[key] = input.value; validate(); });
                 return;
             }
@@ -317,16 +318,16 @@ export function renderDailyNoteEditor(
             const strip = root.createDiv("fcn-daily-blocks");
             if (key === "directory" && draft.baseDirectory) {
                 const wrapper = strip.createDiv("fcn-daily-chip fcn-daily-base-chip");
-                const base = wrapper.createEl("button", { text: `基础目录 · ${draft.baseDirectory}`, attr: { type: "button", title: "基础目录固定在最左侧，点击编辑" } });
+                const base = wrapper.createEl("button", { text: t("基础目录 · {0}", [draft.baseDirectory]), attr: { type: "button", title: t("基础目录固定在最左侧，点击编辑") } });
                 base.toggleClass("is-active", selected?.key === key && selected.index === -1);
                 base.addEventListener("click", () => { selected = { key, index: -1 }; draw(); });
                 // Intentionally not draggable or a drop target: the prefix cannot
                 // be reordered into the template or transferred into the name.
-                const remove = wrapper.createEl("button", { text: "×", cls: "fcn-daily-chip-delete", attr: { type: "button", "aria-label": "删除基础目录" } });
+                const remove = wrapper.createEl("button", { text: "×", cls: "fcn-daily-chip-delete", attr: { type: "button", "aria-label": t("删除基础目录") } });
                 remove.addEventListener("click", () => { draft.baseDirectory = ""; selected = null; draw(); });
-                if (blocks.length) strip.createSpan({ text: "/", cls: "fcn-daily-base-divider", attr: { title: "基础目录与后续目录之间自动连接" } });
+                if (blocks.length) strip.createSpan({ text: "/", cls: "fcn-daily-base-divider", attr: { title: t("基础目录与后续目录之间自动连接") } });
             }
-            if (!blocks.length && !(key === "directory" && draft.baseDirectory)) strip.createSpan({ text: key === "directory" ? "仓库根目录（点击下方组件添加）" : "点击下方组件添加", cls: "fcn-daily-hint" });
+            if (!blocks.length && !(key === "directory" && draft.baseDirectory)) strip.createSpan({ text: key === "directory" ? t("仓库根目录（点击下方组件添加）") : t("点击下方组件添加"), cls: "fcn-daily-hint" });
             if (key === "directory" && selected?.key === key && selected.index === -1) editBase();
             const replace = (next: string[]): void => { draft[key] = next.join(""); draw(); };
             strip.addEventListener("dragover", event => event.preventDefault());
@@ -340,9 +341,9 @@ export function renderDailyNoteEditor(
             });
             blocks.forEach((block, index) => {
                 const wrapper = strip.createDiv("fcn-daily-chip");
-                const chip = wrapper.createEl("button", { text: label(block), attr: { type: "button", "aria-label": `选择 ${label(block)}` } });
+                const chip = wrapper.createEl("button", { text: label(block), attr: { type: "button", "aria-label": t("选择 {0}", [label(block)]) } });
                 const remove = wrapper.createEl("button", { text: "×", cls: "fcn-daily-chip-delete",
-                    attr: { type: "button", "aria-label": `删除 ${label(block)}`, title: "删除组件" } });
+                    attr: { type: "button", "aria-label": t("删除 {0}", [label(block)]), title: t("删除组件") } });
                 remove.addEventListener("click", event => {
                     event.preventDefault(); event.stopPropagation();
                     blocks.splice(index, 1); selected = null; replace(blocks);
@@ -372,15 +373,15 @@ export function renderDailyNoteEditor(
                 const index = selected.index;
                 const block = blocks[index];
                 const token = /^\{\{(date|weekStart|weekEnd|weekFriday|weekLastWorkday|today):(.+)\}\}$/.exec(block);
-                const edit = new Setting(root).setName("选中组件");
+                const edit = new Setting(root).setName(t("选中组件"));
                 if (token) {
-                    edit.setDesc("选中日期＝日历中点击的日期；周开始/结束/周五＝该日期所在自然周的对应日期，不按调休调整；今天＝实际创建当天。格式只能在同类单位内切换，复杂格式请使用高级模板。");
+                    edit.setDesc(t("选中日期＝日历中点击的日期；周开始/结束/周五＝该日期所在自然周的对应日期，不按调休调整；今天＝实际创建当天。格式只能在同类单位内切换，复杂格式请使用高级模板。"));
                     edit.addDropdown(dropdown => dropdown.addOptions(SOURCES).setValue(token[1]).onChange(value => { blocks[index] = `{{${value}:${token[2]}}}`; replace(blocks); }));
                     edit.addDropdown(dropdown => dropdown.addOptions(dailyFormatOptions(token[2])).setValue(token[2]).onChange(value => {
                         blocks[index] = `{{${token[1]}:${value}}}`; replace(blocks);
                     }));
                 } else if (!["/", "-", "_", " "].includes(block)) {
-                    edit.setDesc("仅编辑固定文字，不支持文件名非法字符、目录分隔符或模板变量。添加目录层级请使用“/”组件。");
+                    edit.setDesc(t("仅编辑固定文字，不支持文件名非法字符、目录分隔符或模板变量。添加目录层级请使用“/”组件。"));
                     edit.addText(text => {
                         text.setValue(block).onChange(value => {
                             invalidLiteral = !isValidDailyLiteral(value);
@@ -390,30 +391,30 @@ export function renderDailyNoteEditor(
                         });
                     });
                 } else {
-                    edit.setDesc("分隔符内容固定，不支持编辑；可以移动或删除。");
+                    edit.setDesc(t("分隔符内容固定，不支持编辑；可以移动或删除。"));
                 }
-                edit.addExtraButton(button => button.setIcon("arrow-left").setTooltip("左移").setDisabled(index === 0).onClick(() => {
+                edit.addExtraButton(button => button.setIcon("arrow-left").setTooltip(t("左移")).setDisabled(index === 0).onClick(() => {
                     [blocks[index - 1], blocks[index]] = [blocks[index], blocks[index - 1]]; selected = { key, index: index - 1 }; replace(blocks);
                 }));
-                edit.addExtraButton(button => button.setIcon("arrow-right").setTooltip("右移").setDisabled(index === blocks.length - 1).onClick(() => {
+                edit.addExtraButton(button => button.setIcon("arrow-right").setTooltip(t("右移")).setDisabled(index === blocks.length - 1).onClick(() => {
                     [blocks[index], blocks[index + 1]] = [blocks[index + 1], blocks[index]]; selected = { key, index: index + 1 }; replace(blocks);
                 }));
-                edit.addExtraButton(button => button.setIcon("trash").setTooltip("删除组件").onClick(() => { blocks.splice(index, 1); selected = null; replace(blocks); }));
+                edit.addExtraButton(button => button.setIcon("trash").setTooltip(t("删除组件")).onClick(() => { blocks.splice(index, 1); selected = null; replace(blocks); }));
             }
             const groups: Array<[string, Array<[string, string]>]> = [
-                ["日期相关", TOKENS.filter(([, value]) => value.startsWith("{{"))],
-                ["固定文字", TOKENS.filter(([, value]) => !value.startsWith("{{"))]
+                [t("日期相关"), TOKENS.filter(([, value]) => value.startsWith("{{"))],
+                [t("固定文字"), TOKENS.filter(([, value]) => !value.startsWith("{{"))]
             ];
             if (key === "directory") {
                 const baseGroup = root.createDiv("fcn-daily-palette-group");
-                baseGroup.createDiv({ text: "基础", cls: "fcn-daily-palette-label" });
+                baseGroup.createDiv({ text: t("基础"), cls: "fcn-daily-palette-label" });
                 const palette = baseGroup.createDiv("fcn-daily-palette");
-                const add = palette.createEl("button", { text: draft.baseDirectory ? "编辑基础目录" : "+ 基础目录", attr: { type: "button" } });
+                const add = palette.createEl("button", { text: draft.baseDirectory ? t("编辑基础目录") : t("+ 基础目录"), attr: { type: "button" } });
                 add.addEventListener("click", () => {
-                    if (!draft.baseDirectory) draft.baseDirectory = "日记";
+                    if (!draft.baseDirectory) draft.baseDirectory = t("日记");
                     selected = { key, index: -1 }; draw();
                 });
-                const separator = palette.createEl("button", { text: "+ /", attr: { type: "button", title: "目录分隔符" } });
+                const separator = palette.createEl("button", { text: "+ /", attr: { type: "button", title: t("目录分隔符") } });
                 separator.draggable = true;
                 separator.addEventListener("dragstart", event => event.dataTransfer?.setData("application/x-fcn-daily-block", JSON.stringify({ value: "/" })));
                 separator.addEventListener("click", () => {
@@ -436,31 +437,31 @@ export function renderDailyNoteEditor(
                 });
             });
         });
-        root.createDiv({ cls: "fcn-daily-hint", text: "日期取日历选中日，周从周一开始。周五不受调休影响；本周最后一个工作日按中国大陆节假日和调休计算，全周休假或缺少年度数据时提示错误。高级变量：{{weekLastWorkday:YYYY-MM-DD}}。拖拽可排序，也可使用左右移动按钮。" });
-        new Setting(root).setName("文件类型").addDropdown(dropdown => dropdown.addOptions({ md: "Markdown (.md)", canvas: "Canvas (.canvas)", base: "Base (.base)" })
+        root.createDiv({ cls: "fcn-daily-hint", text: t("日期取日历选中日，周从周一开始。周五不受调休影响；本周最后一个工作日按中国大陆节假日和调休计算，全周休假或缺少年度数据时提示错误。高级变量：{{weekLastWorkday:YYYY-MM-DD}}。拖拽可排序，也可使用左右移动按钮。") });
+        new Setting(root).setName(t("文件类型")).addDropdown(dropdown => dropdown.addOptions({ md: "Markdown (.md)", canvas: "Canvas (.canvas)", base: "Base (.base)" })
             .setValue(draft.type).onChange(value => { draft.type = value as DailyNoteType; draw(); }));
         if (draft.type === "md") {
-            new Setting(root).setName("模板来源").setDesc("只用于 Markdown 日记；不使用模板时默认写入所选日期的 date 属性。")
-                .addDropdown(dropdown => dropdown.addOptions({ none: "不使用模板", obsidian: "Obsidian 模板", templater: "Templater 模板" })
+            new Setting(root).setName(t("模板来源")).setDesc(t("只用于 Markdown 日记；不使用模板时默认写入所选日期的 date 属性。"))
+                .addDropdown(dropdown => dropdown.addOptions({ none: t("不使用模板"), obsidian: t("Obsidian 模板"), templater: t("Templater 模板") })
                     .setValue(draft.templateSource).onChange(value => { draft.templateSource = value as DailyTemplateSource; draw(); }));
             if (draft.templateSource !== "none") {
-                new Setting(root).setName("模板文件").setDesc(draft.templateSource === "templater" ?
-                    "必须启用 Templater。脚本将由 Templater 原生执行，请只使用可信模板；tp.date.now 等日期函数保持插件原有语义。" :
-                    "支持 {{title}}、{{date}}、{{time}} 及日期格式。date 使用日历选中日，time 使用创建时间；默认格式读取核心模板设置，未启用时使用标准默认值。")
+                new Setting(root).setName(t("模板文件")).setDesc(draft.templateSource === "templater" ?
+                    t("必须启用 Templater。脚本将由 Templater 原生执行，请只使用可信模板；tp.date.now 等日期函数保持插件原有语义。") :
+                    t("支持 {{title}}、{{date}}、{{time}} 及日期格式。date 使用日历选中日，time 使用创建时间；默认格式读取核心模板设置，未启用时使用标准默认值。"))
                     .addText(text => {
-                        text.setPlaceholder("模板/每日笔记.md").setValue(draft.templatePath).onChange(value => { draft.templatePath = value; validate(); });
+                        text.setPlaceholder(t("模板/每日笔记.md")).setValue(draft.templatePath).onChange(value => { draft.templatePath = value; validate(); });
                         new DailyTemplateFileSuggest(app, text.inputEl, draft.templateSource);
                     });
             }
-        } else root.createDiv({ cls: "fcn-daily-hint", text: "Canvas / Base 不应用 Markdown 模板，继续使用有效的初始内容。已选模板配置会保留。" });
-        new Setting(root).addButton(button => button.setButtonText("保存创建规则").setCta().onClick(() => {
+        } else root.createDiv({ cls: "fcn-daily-hint", text: t("Canvas / Base 不应用 Markdown 模板，继续使用有效的初始内容。已选模板配置会保留。") });
+        new Setting(root).addButton(button => button.setButtonText(t("保存创建规则")).setCta().onClick(() => {
             if (!validate()) return;
             button.setDisabled(true);
             void save({ ...draft }).then(() => {
                 saved = { ...draft };
-                new Notice("创建规则已保存", 2000);
+                new Notice(t("创建规则已保存"), 2000);
             }).catch(error => {
-                new Notice(error instanceof Error ? error.message : "保存失败，请重试", 5000);
+                new Notice(error instanceof Error ? error.message : t("保存失败，请重试"), 5000);
             }).finally(() => {
                 // Obsidian components implement fluent then(callback). Returning
                 // a component from a Promise callback causes recursive thenable
@@ -479,13 +480,13 @@ export class CreateDailyNoteModal extends Modal {
     constructor(app: App, private config: DailyNoteConfig, private date: Date,
         private created: (file: TFile) => Promise<void>, private lastWorkday?: WeekWorkdayResolver) { super(app); }
     onOpen(): void {
-        this.setTitle("创建每日笔记");
+        this.setTitle(t("创建每日笔记"));
         let name: string;
         try { name = expandDailyTemplate(this.config.name, this.date, this.lastWorkday); dailyNotePath(this.config, this.date, undefined, this.lastWorkday); validateDailyTemplate(this.app, this.config); }
-        catch (error) { this.contentEl.createEl("p", { text: error instanceof Error ? error.message : "创建规则无效，请检查日历设置。" }); return; }
-        this.contentEl.createEl("p", { text: `日期：${moment(this.date).format("YYYY-MM-DD")} · 类型：.${this.config.type}` });
+        catch (error) { this.contentEl.createEl("p", { text: error instanceof Error ? error.message : t("创建规则无效，请检查日历设置。") }); return; }
+        this.contentEl.createEl("p", { text: t("日期：{0} · 类型：.{1}", [moment(this.date).format("YYYY-MM-DD"), this.config.type]) });
         if (this.config.type === "md" && this.config.templateSource !== "none") this.contentEl.createEl("p", {
-            text: `模板：${this.config.templateSource === "templater" ? "Templater（会执行模板脚本）" : "Obsidian"} · ${this.config.templatePath}`
+            text: t("模板：{0} · {1}", [this.config.templateSource === "templater" ? t("Templater（会执行模板脚本）") : "Obsidian", this.config.templatePath])
         });
         const pathEl = this.contentEl.createDiv("fcn-daily-preview");
         const errorEl = this.contentEl.createDiv("fcn-daily-error");
@@ -497,25 +498,25 @@ export class CreateDailyNoteModal extends Modal {
                 path = dailyNotePath(this.config, this.date, name, this.lastWorkday); pathEl.setText(path);
                 const occupied = this.app.vault.getAbstractFileByPath(path);
                 openExisting?.setDisabled(!(occupied instanceof TFile));
-                errorEl.setText(occupied ? "同名文件或目录已存在；请修改名称，或打开已有文件。" : "不存在的目录将自动创建。");
+                errorEl.setText(occupied ? t("同名文件或目录已存在；请修改名称，或打开已有文件。") : t("不存在的目录将自动创建。"));
                 return !occupied;
             } catch (error) {
-                path = ""; pathEl.setText("路径无效"); openExisting?.setDisabled(true);
-                errorEl.setText(error instanceof Error ? error.message : "路径无效"); return false;
+                path = ""; pathEl.setText(t("路径无效")); openExisting?.setDisabled(true);
+                errorEl.setText(error instanceof Error ? error.message : t("路径无效")); return false;
             }
         };
-        new Setting(this.contentEl).setName("笔记名称").addText(text => {
+        new Setting(this.contentEl).setName(t("笔记名称")).addText(text => {
             text.setValue(name).onChange(value => { name = value; confirm.setDisabled(!validate()); });
             window.setTimeout(() => { if (text.inputEl.isConnected) { text.inputEl.focus(); text.inputEl.select(); } }, 0);
         });
         new Setting(this.contentEl)
-            .addButton(button => button.setButtonText("取消").onClick(() => { if (!busy) this.close(); }))
-            .addButton(button => { openExisting = button; button.setButtonText("打开已有文件").onClick(() => {
+            .addButton(button => button.setButtonText(t("取消")).onClick(() => { if (!busy) this.close(); }))
+            .addButton(button => { openExisting = button; button.setButtonText(t("打开已有文件")).onClick(() => {
                 const file = this.app.vault.getAbstractFileByPath(path);
                 if (file instanceof TFile && !busy) void this.app.workspace.getLeaf(false).openFile(file).then(() => this.close());
             }); })
             .addButton(button => {
-                confirm = button; button.setButtonText("创建并打开").setCta().onClick(() => {
+                confirm = button; button.setButtonText(t("创建并打开")).setCta().onClick(() => {
                     if (busy || !validate()) return;
                     busy = true; button.setDisabled(true);
                     void (async () => {
@@ -524,21 +525,21 @@ export class CreateDailyNoteModal extends Modal {
                         for (const segment of segments) {
                             current = current ? `${current}/${segment}` : segment;
                             const existing = this.app.vault.getAbstractFileByPath(current);
-                            if (existing && !(existing instanceof TFolder)) throw new Error(`目录路径被文件占用：${current}`);
+                            if (existing && !(existing instanceof TFolder)) throw new Error(t("目录路径被文件占用：{0}", [current]));
                             if (!existing) {
                                 try { await this.app.vault.createFolder(current); }
                                 catch (error) { if (!(this.app.vault.getAbstractFileByPath(current) instanceof TFolder)) throw error; }
                             }
                         }
-                        if (this.app.vault.getAbstractFileByPath(path)) throw new Error("同名文件已存在，未覆盖。请修改名称。");
+                        if (this.app.vault.getAbstractFileByPath(path)) throw new Error(t("同名文件已存在，未覆盖。请修改名称。"));
                         const file = await createDailyNoteWithTemplate(this.app, this.config, this.date, path, template);
                         try { await this.created(file); }
                         catch (error) {
-                            throw new Error(`笔记已创建，但保存关联或打开失败。请使用“打开已有文件”。${error instanceof Error ? error.message : ""}`);
+                            throw new Error(t("笔记已创建，但保存关联或打开失败。请使用“打开已有文件”。{0}", [error instanceof Error ? error.message : ""]));
                         }
                         this.close();
                     })().catch(error => {
-                        errorEl.setText(error instanceof Error ? error.message : "创建失败，请重试。");
+                        errorEl.setText(error instanceof Error ? error.message : t("创建失败，请重试。"));
                     }).finally(() => {
                         busy = false;
                         // Do not erase a creation error while refreshing the existing-file action.

@@ -5,6 +5,7 @@ const vm = require("node:vm");
 const assert = require("node:assert/strict");
 const ts = require("typescript");
 const moment = require("moment");
+const i18n = require("./i18n-test-utils.cjs").loadI18n();
 const exportsObject = {};
 class Element {
     constructor() { this.children = []; this.text = ""; }
@@ -38,6 +39,7 @@ vm.runInNewContext(ts.transpileModule(source, {
     exports: exportsObject,
     Error,
     require: name => {
+        if (name === "./i18n") return i18n;
         assert.equal(name, "obsidian");
         return { moment, Modal, Setting, TFile, TFolder, AbstractInputSuggest: class {} };
     },
@@ -129,7 +131,7 @@ async function testSaveAndMatchingPerformance() {
         .find(item => item.name?.getText(main) === methodName).getText(main);
     const compiled = ts.transpileModule(`class Plugin { ${method("FolderColumnNavigator", "saveDailyNoteConfig")} }; ({Plugin})`,
         { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText;
-    const { Plugin } = vm.runInNewContext(compiled, { TFile });
+    const { Plugin } = vm.runInNewContext(compiled, { TFile, t: i18n.t });
     const plugin = new Plugin(); let uiUpdates = 0; let saves = 0;
     plugin.settings = { dailyNote: { ...DEFAULT_DAILY_NOTE } };
     plugin.views = new Set([{ refreshDailyNoteCreationUi: () => uiUpdates++, refresh: () => { throw Error("Unexpected full view refresh"); } }]);
@@ -204,7 +206,7 @@ function testColumnAlignment() {
     const align = view.members.find(item => item.name?.getText(main) === "alignColumnsAfterActivation");
     const { cleanColumnClickAlignment, View } = vm.runInNewContext(ts.transpileModule(
         `${options.getText(main)}\n${clean.getText(main)}\nclass View {${align.getText(main)}}; ({cleanColumnClickAlignment,View})`,
-        { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText);
+        { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText, { t: i18n.t });
     assert.equal(cleanColumnClickAlignment(undefined), "current-left");
     assert.equal(cleanColumnClickAlignment(undefined, false), "none");
     assert.equal(cleanColumnClickAlignment(undefined, true), "current-left");
@@ -237,7 +239,7 @@ async function testDefaultProfile() {
     const load = pluginClass.members.find(node => node.name?.getText(main) === "loadSettings").getText(main);
     const { Plugin, defaults } = vm.runInNewContext(ts.transpileModule(`${declarations}\nclass Plugin {${load}}; ({Plugin,defaults:DEFAULT_SETTINGS})`,
         { compilerOptions: { target: ts.ScriptTarget.ES2020 } }).outputText,
-        { DEFAULT_DAILY_NOTE, cleanDailyNoteConfig, TFile, TFolder,
+        { DEFAULT_DAILY_NOTE, cleanDailyNoteConfig, TFile, TFolder, t: i18n.t,
             cleanHolidayCache: () => ({}), MainlandHolidayCalendar: class {} });
     const make = data => {
         const plugin = new Plugin(); plugin.loadData = async () => data;

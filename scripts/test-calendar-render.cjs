@@ -16,6 +16,7 @@ async function run() {
         import zhCnLocale from '@fullcalendar/core/locales/zh-cn';
         import { MainlandHolidayCalendar } from './holidays';
         import { CalendarVirtualList } from './calendar-virtual-list';
+        import { t, interfaceLanguage, calendarLocale, calendarWeekday, calendarMonth } from './i18n';
         HTMLElement.prototype.toggleClass = function(name, on) { this.classList.toggle(name, on); };
         HTMLElement.prototype.setText = function(text) { this.textContent = text; };
         HTMLElement.prototype.empty = function() { this.replaceChildren(); };
@@ -66,7 +67,12 @@ async function run() {
             window.virtualFixture = {box,host,list};
         };
     `;
-    const bundle = await esbuild.build({ stdin: { contents: script, resolveDir: root, loader: "ts" }, bundle: true, write: false, format: "iife" });
+    const bundle = await esbuild.build({ stdin: { contents: script, resolveDir: root, loader: "ts" }, bundle: true, write: false, format: "iife",
+        plugins: [{ name: "test-obsidian-language", setup(build) {
+            build.onResolve({ filter: /^obsidian$/ }, () => ({ path: "obsidian", namespace: "language-test" }));
+            build.onLoad({ filter: /.*/, namespace: "language-test" }, () => ({ contents: 'export function getLanguage() { return window.__fcnTestLanguage || "zh"; }' }));
+        } }]
+    });
     const browser = await chromium.launch({ headless: true, ...(process.env.CHROME_EXECUTABLE_PATH ? { executablePath: process.env.CHROME_EXECUTABLE_PATH } : {}) });
     try {
         const page = await browser.newPage({ viewport: { width: 420, height: 600 } });
@@ -125,6 +131,36 @@ async function run() {
         await page.evaluate(() => { window.fixture.plugin.settings.calendarShowHolidays = true; window.fixture.updateCalendarDateCells(); });
         assert.equal((await inspect("2026-01-04")).marker, "班");
         assert.deepEqual(errors, []);
+        // Recreate the calendar after changing the host language, as Obsidian
+        // does when reloading after a language preference change.
+        await page.evaluate(() => {
+            window.__fcnTestLanguage = 'en';
+            document.querySelector('.folder-column-navigator-view').dataset.fcnLanguage = 'en';
+            const v = window.fixture;
+            v.calendar.destroy(); v.calendar = null;
+            v.calendarToolbarTitle = document.body.createEl('button');
+            v.calendarDisplayMode = 'month'; v.ensureCalendar();
+            v.calendar.gotoDate('2026-10-01'); v.renderCalendarToolbar();
+        });
+        await page.waitForTimeout(80);
+        assert.equal(await page.locator('.fc-col-header-cell-cushion').first().textContent(), 'Mon');
+        assert.equal((await inspect('2026-10-01')).marker, 'Off');
+        assert.equal((await inspect('2026-10-01')).name, 'National Day');
+        assert.equal((await inspect('2026-10-10')).marker, 'Work');
+        assert.equal(await page.locator('[data-date="2026-10-10"]').evaluate(cell => {
+            const marker = cell.querySelector('.fcn-holiday-marker').getBoundingClientRect();
+            const number = cell.querySelector('.fc-daygrid-day-number').getBoundingClientRect();
+            return marker.bottom <= number.top + 2;
+        }), true, 'English Work label must not overlap the date circle');
+        assert.equal(await page.evaluate(() => window.fixture.calendarToolbarTitle.textContent), 'October 2026');
+        assert.match(await page.locator('[data-date="2026-10-01"]').getAttribute('title'), /National Day/);
+        await page.evaluate(() => window.fixture.setCalendarDisplayMode('week'));
+        await page.waitForTimeout(80);
+        assert.equal(await page.locator('.fc-daygrid-body tbody tr').count(), 1);
+        assert.equal(await page.locator('.fc-col-header-cell').count(), 7);
+        assert.match(await page.evaluate(() => window.fixture.calendarToolbarTitle.textContent), /^Week /);
+        assert.deepEqual(errors, []);
+        console.log('PASS: English FullCalendar weekdays, month/week titles, Off/Work markers and holiday names follow the host language.');
         await page.addStyleTag({content:'.virtual-fixture{height:240px;display:flex;flex-direction:column}.virtual-fixture .fcn-calendar-results-list{height:240px;flex:none}'});
         await page.evaluate(() => window.makeVirtualFixture(100000));
         await page.waitForTimeout(80);

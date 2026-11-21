@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import data2025 from "./data/holidays/2025.json";
 import data2026 from "./data/holidays/2026.json";
 import data2027 from "./data/holidays/2027.json";
@@ -26,12 +27,12 @@ export function validateHolidayYear(value: unknown, expectedYear: number): Holid
     if (!data || data.year !== expectedYear || !Number.isInteger(expectedYear) || expectedYear < 2000 || expectedYear > 2200 ||
         !Array.isArray(data.papers) || data.papers.length === 0 || data.papers.length > 30 ||
         !data.papers.every(paper => typeof paper === "string" && /^https:\/\/(?:www\.)?gov\.cn\//.test(paper)) ||
-        !Array.isArray(data.days) || data.days.length < 10 || data.days.length > 400) throw new Error("节假日数据格式不完整或年份不符。");
+        !Array.isArray(data.days) || data.days.length < 10 || data.days.length > 400) throw new Error(t("节假日数据格式不完整或年份不符。"));
     const dates = new Set<string>();
     for (const day of data.days) {
         if (!day || !validDate(day.date) || Math.abs(Number(day.date.slice(0, 4)) - expectedYear) > 1 ||
             typeof day.name !== "string" || !day.name.trim() || day.name.length > 40 ||
-            typeof day.isOffDay !== "boolean" || dates.has(day.date)) throw new Error("节假日数据包含无效或重复日期。");
+            typeof day.isOffDay !== "boolean" || dates.has(day.date)) throw new Error(t("节假日数据包含无效或重复日期。"));
         dates.add(day.date);
     }
     return { year: expectedYear, papers: [...data.papers], days: data.days.map(day => ({ date: day.date, name: day.name, isOffDay: day.isOffDay })) };
@@ -79,7 +80,7 @@ export class MainlandHolidayCalendar {
     isWorkday(date: Date): boolean {
         const day = this.days.get(holidayDateKey(date));
         if (day) return !day.isOffDay;
-        if (!this.years.has(date.getFullYear())) throw new Error(`${date.getFullYear()} 年节假日数据尚未收录，请联网更新该年数据后重试。`);
+        if (!this.years.has(date.getFullYear())) throw new Error(t("{0} 年节假日数据尚未收录，请联网更新该年数据后重试。", [date.getFullYear()]));
         return date.getDay() !== 0 && date.getDay() !== 6;
     }
     /** Validate the entire Monday–Sunday week before selecting a day; an unknown
@@ -92,7 +93,7 @@ export class MainlandHolidayCalendar {
             const current = new Date(monday); current.setDate(current.getDate() + offset);
             if (this.isWorkday(current)) last = current;
         }
-        if (!last) throw new Error("所选日期所在周没有工作日，请改用其他日期积木。");
+        if (!last) throw new Error(t("所选日期所在周没有工作日，请改用其他日期积木。"));
         return last;
     }
 }
@@ -101,7 +102,7 @@ export class MainlandHolidayCalendar {
  * calendar navigation; only the explicitly enabled update button calls this. */
 export async function fetchHolidayYear(year: number, allowed: boolean,
     fetchJson: (url: string) => Promise<unknown>): Promise<HolidayYear> {
-    if (!allowed) throw new Error("请先开启允许联网更新。");
-    if (!Number.isInteger(year) || year < 2000 || year > 2200) throw new Error("请输入 2000–2200 之间的年份。");
+    if (!allowed) throw new Error(t("请先开启允许联网更新。"));
+    if (!Number.isInteger(year) || year < 2000 || year > 2200) throw new Error(t("请输入 2000–2200 之间的年份。"));
     return validateHolidayYear(await fetchJson(`${HOLIDAY_DATA_URL}${year}.json`), year);
 }

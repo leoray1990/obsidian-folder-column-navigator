@@ -111,7 +111,7 @@ async function run() {
     const viewMethods = ['refreshCalendarDateMatches', 'getCalendarWeekStart'].map(name => viewClass.members.find(node => node.name?.getText(source) === name).getText(source)).join('\n');
     const View = vm.runInNewContext(ts.transpileModule(`${functions}\nclass View {${viewMethods}}; View`, {
         compilerOptions: { target: ts.ScriptTarget.ES2020 }
-    }).outputText, { Date, Map, console: { error() {} } });
+    }).outputText, { Date, Map, t: require("./i18n-test-utils.cjs").loadI18n().t, console: { error() {} } });
     const v = new View(), requests = [];
     let currentDate = new Date(2026, 10, 17), paints = 0;
     v.calendar = { getDate: () => currentDate }; v.calendarExpanded = true; v.isStandaloneCalendar = true;

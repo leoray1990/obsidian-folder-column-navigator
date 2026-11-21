@@ -2,11 +2,12 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm"), ts = require("typescript");
 const root = path.join(__dirname, "..");
+const i18n = require("./i18n-test-utils.cjs").loadI18n();
 function load(file, requireModule) {
     const exports = {};
     vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(root, file), "utf8"), {
         compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS, esModuleInterop: true }
-    }).outputText, { exports, require: requireModule, Date, Error, Map, Set });
+    }).outputText, { exports, require: name => name === "./i18n" ? i18n : requireModule(name), Date, Error, Map, Set });
     return exports;
 }
 const holidays = load("holidays.ts", name => require(path.join(root, name)));
@@ -66,7 +67,7 @@ async function run() {
     let failRequest = false;
     const Plugin = vm.runInNewContext(ts.transpileModule(`class Plugin { ${method} }; Plugin`, {
         compilerOptions: { target: ts.ScriptTarget.ES2020 }
-    }).outputText, { fetchHolidayYear, MainlandHolidayCalendar, setTimeout, clearTimeout, Date, Error,
+    }).outputText, { fetchHolidayYear, MainlandHolidayCalendar, setTimeout, clearTimeout, Date, Error, t: i18n.t,
         requestUrl: async () => { if (failRequest) throw new Error("network"); return { status: 200, text: JSON.stringify(data) }; }
     });
     const instance = new Plugin();

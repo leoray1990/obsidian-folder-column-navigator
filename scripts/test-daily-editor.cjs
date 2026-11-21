@@ -1,6 +1,7 @@
 // Settings UI regression harness: no real vault writes or browser are required.
 const fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
 const assert = require("node:assert/strict"), ts = require("typescript"), moment = require("moment");
+const i18n = require("./i18n-test-utils.cjs").loadI18n();
 class Element {
     constructor(cls = "", text = "") { this.cls = cls; this.text = text; this.children = []; this.parentElement = null; this.scrollTop = 0; this.scrollLeft = 0; this.events = {}; }
     get isConnected() { return this.parentElement ? this.parentElement.isConnected : Boolean(this.attached); }
@@ -43,7 +44,7 @@ const exportsObject = {}, frames = [], notices = [];
 vm.runInNewContext(ts.transpileModule(fs.readFileSync(path.join(__dirname, "../daily-note.ts"), "utf8"), {
     compilerOptions: { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.CommonJS }
 }).outputText, { exports: exportsObject, Error,
-    require: () => ({ moment, Setting, Modal: class {}, Notice: class { constructor(message, duration) { notices.push({ message, duration }); } }, AbstractInputSuggest: class {}, TFile: class {}, TFolder: class {} }),
+    require: name => name === "./i18n" ? i18n : ({ moment, Setting, Modal: class {}, Notice: class { constructor(message, duration) { notices.push({ message, duration }); } }, AbstractInputSuggest: class {}, TFile: class {}, TFolder: class {} }),
     window: { requestAnimationFrame: fn => frames.push(fn) }
 });
 const { renderDailyNoteEditor, DEFAULT_DAILY_NOTE, preserveSettingsScroll } = exportsObject;
@@ -95,13 +96,15 @@ async function run() {
     assert.equal(visibleSettings().filter(s => s.name === "启用每日笔记创建").at(-1).controls[0].value, true);
     const main = ts.createSourceFile("main.ts", fs.readFileSync(path.join(__dirname, "../main.ts"), "utf8"), ts.ScriptTarget.Latest, true);
     let calendar;
+    const sourceLabel = node => ts.isCallExpression(node) && node.expression.getText(main) === "t"
+        ? node.arguments[0].text : node.text;
     const visit = node => {
-        if (ts.isObjectLiteralExpression(node) && node.properties.some(p => p.name?.getText(main) === "name" && p.initializer?.text === "日历")) calendar = node;
+        if (ts.isObjectLiteralExpression(node) && node.properties.some(p => p.name?.getText(main) === "name" && sourceLabel(p.initializer) === "日历")) calendar = node;
         ts.forEachChild(node, visit);
     };
     visit(main);
     const groups = calendar.properties.find(p => p.name?.getText(main) === "items").initializer.elements;
-    const headings = groups.map(group => group.properties.find(p => p.name?.getText(main) === "heading")?.initializer.text);
+    const headings = groups.map(group => sourceLabel(group.properties.find(p => p.name?.getText(main) === "heading")?.initializer));
     assert.equal(headings.at(-1), "创建每日笔记");
     assert.equal(headings.filter(name => name === "创建每日笔记").length, 1);
     console.log("PASS: idempotent rendering, preserved scroll, disable/hide and re-enable, preset defaults/order/range, week chips, preview ordering and exactly three palette categories.");

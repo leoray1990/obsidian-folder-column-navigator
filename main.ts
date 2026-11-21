@@ -1,3 +1,4 @@
+import { t, interfaceLanguage, calendarLocale, calendarWeekday, calendarMonth } from "./i18n";
 import {
     AbstractInputSuggest,
     FileView,
@@ -247,20 +248,20 @@ const THEME_STYLE_CLASSES: Record<ThemeStyle, string> = {
 };
 
 const COLORFUL_PALETTE_LABELS: Record<ColorfulPalette, string> = {
-    rainbow: "彩虹",
-    ocean: "海盐",
-    forest: "森野",
-    sunset: "晚霞"
+    rainbow: t("彩虹"),
+    ocean: t("海盐"),
+    forest: t("森野"),
+    sunset: t("晚霞")
 };
 
 type ColumnClickAlignment = "current-left" | "keep-one" | "keep-two" | "next-left" | "next-right" | "none";
 const COLUMN_CLICK_ALIGNMENT_OPTIONS: Record<ColumnClickAlignment, string> = {
-    "current-left": "当前操作列靠左（默认）",
-    "keep-one": "保留左侧 1 列",
-    "keep-two": "保留左侧 2 列",
-    "next-left": "新展开列靠左",
-    "next-right": "新展开列靠右",
-    none: "不自动滚动"
+    "current-left": t("当前操作列靠左（默认）"),
+    "keep-one": t("保留左侧 1 列"),
+    "keep-two": t("保留左侧 2 列"),
+    "next-left": t("新展开列靠左"),
+    "next-right": t("新展开列靠右"),
+    none: t("不自动滚动")
 };
 function cleanColumnClickAlignment(value: unknown, legacyToggle?: boolean): ColumnClickAlignment {
     if (typeof value === "string" && Object.prototype.hasOwnProperty.call(COLUMN_CLICK_ALIGNMENT_OPTIONS, value)) {
@@ -466,11 +467,11 @@ class TextInputModal extends Modal {
         });
         const validation = this.contentEl.createDiv("fcn-input-validation");
         const actions = this.contentEl.createDiv("modal-button-container");
-        actions.createEl("button", { text: "取消" }).addEventListener("click", () => this.close());
+        actions.createEl("button", { text: t("取消") }).addEventListener("click", () => this.close());
         const submitButton = actions.createEl("button", { text: this.submitLabel, cls: "mod-cta" });
         const validate = (): boolean => {
             const value = input.value.trim();
-            const message = !value ? "请输入名称。" : this.validateValue?.(value) ?? "";
+            const message = !value ? t("请输入名称。") : this.validateValue?.(value) ?? "";
             validation.setText(message);
             validation.toggleClass("is-visible", Boolean(message));
             input.toggleClass("is-invalid", Boolean(message));
@@ -513,11 +514,11 @@ class FolderDestinationModal extends SuggestModal<TFolder> {
         private readonly onChooseFolder: (folder: TFolder) => Promise<void> | void
     ) {
         super(app);
-        this.setPlaceholder("搜索目标目录（支持拼音）");
+        this.setPlaceholder(t("搜索目标目录（支持拼音）"));
         this.setInstructions([
-            { command: "↑↓", purpose: "选择目录" },
-            { command: "↵", purpose: "移动到此处" },
-            { command: "esc", purpose: "取消" }
+            { command: "↑↓", purpose: t("选择目录") },
+            { command: "↵", purpose: t("移动到此处") },
+            { command: "esc", purpose: t("取消") }
         ]);
     }
 
@@ -547,11 +548,11 @@ class GroupDestinationModal extends SuggestModal<GroupOption> {
         private readonly onChooseGroup: (group: GroupOption) => Promise<void> | void
     ) {
         super(app);
-        this.setPlaceholder("搜索分组（支持拼音）");
+        this.setPlaceholder(t("搜索分组（支持拼音）"));
         this.setInstructions([
-            { command: "↑↓", purpose: "选择分组" },
-            { command: "↵", purpose: "设置分组" },
-            { command: "esc", purpose: "取消" }
+            { command: "↑↓", purpose: t("选择分组") },
+            { command: "↵", purpose: t("设置分组") },
+            { command: "esc", purpose: t("取消") }
         ]);
     }
 
@@ -619,13 +620,13 @@ class BatchPropertyModal extends Modal {
     }
 
     onOpen(): void {
-        this.setTitle("批量设置属性");
+        this.setTitle(t("批量设置属性"));
         this.modalEl.addClass("fcn-batch-property-modal");
         const form = this.contentEl.createDiv("fcn-batch-property-form");
-        form.createEl("label", { text: "属性名" });
+        form.createEl("label", { text: t("属性名") });
         const propertyInput = form.createEl("input", {
             type: "text",
-            placeholder: "输入或选择属性名"
+            placeholder: t("输入或选择属性名")
         });
         const shortcuts = form.createDiv("fcn-property-shortcuts");
         ["group", "aliases", "tags"].forEach(property => {
@@ -636,28 +637,28 @@ class BatchPropertyModal extends Modal {
                 valueInput.focus();
             });
         });
-        form.createEl("label", { text: "属性类型" });
+        form.createEl("label", { text: t("属性类型") });
         const typeSelect = form.createEl("select");
         ([
-            ["text", "文本"],
-            ["list", "列表（追加）"],
-            ["number", "数字"],
-            ["checkbox", "复选框"],
-            ["date", "日期"],
-            ["datetime", "日期时间"]
+            ["text", t("文本")],
+            ["list", t("列表（追加）")],
+            ["number", t("数字")],
+            ["checkbox", t("复选框")],
+            ["date", t("日期")],
+            ["datetime", t("日期时间")]
         ] as Array<[PropertyValueType, string]>).forEach(([value, label]) => {
             typeSelect.createEl("option", { value, text: label });
         });
-        form.createEl("label", { text: "属性值" });
+        form.createEl("label", { text: t("属性值") });
         const valueInput = form.createEl("input", {
             type: "text",
-            placeholder: "列表值可使用逗号分隔"
+            placeholder: t("列表值可使用逗号分隔")
         });
         const hint = form.createDiv("fcn-property-type-hint");
         const validation = form.createDiv("fcn-input-validation");
         const actions = this.contentEl.createDiv("modal-button-container");
-        actions.createEl("button", { text: "取消" }).addEventListener("click", () => this.close());
-        const submitButton = actions.createEl("button", { text: "设置", cls: "mod-cta" });
+        actions.createEl("button", { text: t("取消") }).addEventListener("click", () => this.close());
+        const submitButton = actions.createEl("button", { text: t("设置"), cls: "mod-cta" });
 
         const updatePropertyType = (): void => {
             const property = propertyInput.value.trim();
@@ -668,8 +669,8 @@ class BatchPropertyModal extends Modal {
             hint.setText(resolution.error
                 ? resolution.error
                 : resolution.type
-                    ? `已根据现有属性识别为“${typeSelect.selectedOptions[0]?.text ?? typeSelect.value}”。`
-                    : "新属性可自行选择类型。");
+                    ? t("已根据现有属性识别为“{0}”。", [typeSelect.selectedOptions[0]?.text ?? typeSelect.value])
+                    : t("新属性可自行选择类型。"));
             hint.toggleClass("is-error", Boolean(resolution.error));
             submitButton.disabled = Boolean(resolution.error) || !property;
         };
@@ -680,10 +681,10 @@ class BatchPropertyModal extends Modal {
             const rawValue = valueInput.value.trim();
             const resolution = property ? this.resolveType(property) : { type: null, error: null };
             const message = !property
-                ? "请输入属性名。"
+                ? t("请输入属性名。")
                 : resolution.error
                     ? resolution.error
-                    : !rawValue ? "请输入属性值。" : "";
+                    : !rawValue ? t("请输入属性值。") : "";
             validation.setText(message);
             validation.toggleClass("is-visible", Boolean(message));
             if (message) {
@@ -734,7 +735,7 @@ class ConfirmationModal extends Modal {
         this.setTitle(this.title);
         this.contentEl.createEl("p", { text: this.message });
         const actions = this.contentEl.createDiv("modal-button-container");
-        actions.createEl("button", { text: "取消" }).addEventListener("click", () => this.close());
+        actions.createEl("button", { text: t("取消") }).addEventListener("click", () => this.close());
         const confirm = actions.createEl("button", { text: this.confirmLabel, cls: "mod-warning" });
         confirm.addEventListener("click", () => {
             this.close();
@@ -757,9 +758,9 @@ class PropertyUpdateSummaryModal extends Modal {
     }
 
     onOpen(): void {
-        this.setTitle("属性修改完成");
+        this.setTitle(t("属性修改完成"));
         this.contentEl.createEl("p", {
-            text: `已修改 ${this.results.length} 个 Markdown 文件，以下为“${this.property}”的最新值：`
+            text: t("已修改 {0} 个 Markdown 文件，以下为“{1}”的最新值：", [this.results.length, this.property])
         });
         const list = this.contentEl.createDiv("fcn-property-summary-list");
         this.results.forEach(result => {
@@ -768,7 +769,7 @@ class PropertyUpdateSummaryModal extends Modal {
             row.createDiv({ text: result.value, cls: "fcn-property-summary-value" });
         });
         const actions = this.contentEl.createDiv("modal-button-container");
-        actions.createEl("button", { text: "完成", cls: "mod-cta" }).addEventListener("click", () => this.close());
+        actions.createEl("button", { text: t("完成"), cls: "mod-cta" }).addEventListener("click", () => this.close());
     }
 
     onClose(): void {
@@ -939,21 +940,21 @@ class DateMatchedFilesModal extends Modal {
 
     onOpen(): void {
         this.modalEl.addClass("fcn-date-match-modal");
-        this.setTitle(`${formatCalendarDate(this.date)} 的文件`);
+        this.setTitle(t("{0} 的文件", [formatCalendarDate(this.date)]));
         this.contentEl.createEl("p", {
-            text: `找到 ${this.files.length} 个匹配文件，请选择要打开的文件。`,
+            text: t("找到 {0} 个匹配文件，请选择要打开的文件。", [this.files.length]),
             cls: "fcn-date-match-modal-description"
         });
         const list = this.contentEl.createDiv("fcn-date-match-modal-list");
-        list.setAttribute("aria-label", `${formatCalendarDate(this.date)} 的匹配文件`);
+        list.setAttribute("aria-label", t("{0} 的匹配文件", [formatCalendarDate(this.date)]));
         if (this.onCreate) {
-            const button = list.createEl("button", { text: "+ 创建每日笔记", cls: "fcn-date-match-modal-item" });
+            const button = list.createEl("button", { text: t("+ 创建每日笔记"), cls: "fcn-date-match-modal-item" });
             button.addEventListener("click", () => { this.close(); this.onCreate?.(); });
         }
         this.virtualList = new CalendarVirtualList(list, this.files, (file, parent) => {
             const row = parent.createEl("button", {
                 cls: "fcn-date-match-modal-item",
-                attr: { type: "button", "aria-label": `打开 ${file.path}` }
+                attr: { type: "button", "aria-label": t("打开 {0}", [file.path]) }
             });
             const icon = row.createSpan("fcn-item-icon");
             setIcon(icon, "file-text");
@@ -1048,7 +1049,7 @@ export default class FolderColumnNavigator extends Plugin {
             return view;
         });
         this.registerHoverLinkSource("folder-column-navigator", {
-            display: "目录文件列表",
+            display: t("目录文件列表"),
             defaultMod: false
         });
 
@@ -1056,22 +1057,22 @@ export default class FolderColumnNavigator extends Plugin {
             void this.handleItemRename(item, oldPath);
         }));
 
-        this.addRibbonIcon("folder-tree", "打开目录文件列表", () => {
+        this.addRibbonIcon("folder-tree", t("打开目录文件列表"), () => {
             void this.activateView();
         });
         this.addCommand({
             id: "open",
-            name: "打开目录文件列表",
+            name: t("打开目录文件列表"),
             callback: () => void this.activateView()
         });
         this.addCommand({
             id: "reveal-active-file",
-            name: "定位当前笔记",
+            name: t("定位当前笔记"),
             callback: () => this.views.forEach(view => view.revealActiveFile())
         });
         this.addCommand({
             id: "open-calendar",
-            name: "打开独立日历视图",
+            name: t("打开独立日历视图"),
             callback: () => void this.activateCalendarView()
         });
         this.settingsTab = new FolderColumnNavigatorSettingTab(this.app, this);
@@ -1396,7 +1397,7 @@ export default class FolderColumnNavigator extends Plugin {
     /** Explicit opt-in update, isolated from vault scans and rule-editor drafts.
      * Persist first; failed downloads or writes keep the previous valid cache. */
     async updateHolidayData(year: number): Promise<void> {
-        if (this.holidayUpdateBusy) throw new Error("正在更新节假日数据，请稍候。");
+        if (this.holidayUpdateBusy) throw new Error(t("正在更新节假日数据，请稍候。"));
         this.holidayUpdateBusy = true;
         try {
             const data = await fetchHolidayYear(year, this.settings.holidayOnlineUpdate, async url => {
@@ -1404,10 +1405,10 @@ export default class FolderColumnNavigator extends Plugin {
                 try {
                     const response = await Promise.race([
                         requestUrl({ url, method: "GET", throw: false }),
-                        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error("节假日数据请求超时。")), 15000); })
+                        new Promise<never>((_resolve, reject) => { timer = setTimeout(() => reject(new Error(t("节假日数据请求超时。"))), 15000); })
                     ]);
-                    if (response.status !== 200) throw new Error(`${year} 年数据未发布或暂时无法获取（HTTP ${response.status}）。`);
-                    if (response.text.length > 150000) throw new Error("节假日数据过大，已拒绝更新。");
+                    if (response.status !== 200) throw new Error(t("{0} 年数据未发布或暂时无法获取（HTTP {1}）。", [year, response.status]));
+                    if (response.text.length > 150000) throw new Error(t("节假日数据过大，已拒绝更新。"));
                     return JSON.parse(response.text) as unknown;
                 } finally { if (timer !== undefined) clearTimeout(timer); }
             });
@@ -1736,8 +1737,8 @@ export default class FolderColumnNavigator extends Plugin {
         const isRootFolder = folder ? this.getRootFolders().some(item => item.path === folder.path) : false;
         if (path === ROOT_PATH || !folder || isRootFolder) {
             new Notice(isRootFolder
-                ? "一级目录会自动显示，不需要重复添加为自定义目录。"
-                : "请输入仓库中存在的目录路径。目录层级用 / 分隔。", 4000);
+                ? t("一级目录会自动显示，不需要重复添加为自定义目录。")
+                : t("请输入仓库中存在的目录路径。目录层级用 / 分隔。"), 4000);
             return false;
         }
         if (this.settings.customFolders.includes(path)) {
@@ -1948,7 +1949,7 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     getDisplayText(): string {
-        return this.isStandaloneCalendar ? "目录文件日历" : "目录文件列表";
+        return this.isStandaloneCalendar ? t("目录文件日历") : t("目录文件列表");
     }
 
     getIcon(): string {
@@ -1958,6 +1959,7 @@ class FolderColumnNavigatorView extends ItemView {
     async onOpen(): Promise<void> {
         this.containerEl.empty();
         this.containerEl.addClass("folder-column-navigator-view");
+        this.containerEl.dataset.fcnLanguage = interfaceLanguage();
         this.viewContentEl = this.containerEl.closest<HTMLElement>(".view-content") ?? this.containerEl;
         this.viewContentEl.addClass("fcn-view-content-reset");
         this.viewHostEl = this.containerEl.closest<HTMLElement>(".workspace-leaf-content");
@@ -1991,7 +1993,7 @@ class FolderColumnNavigatorView extends ItemView {
 
         const divider = this.shellEl.createDiv("fcn-resize-divider");
         divider.setAttribute("role", "separator");
-        divider.setAttribute("aria-label", "调整目录列宽度");
+        divider.setAttribute("aria-label", t("调整目录列宽度"));
         divider.addEventListener("pointerdown", event => this.startResize(event));
 
         const contentPane = this.shellEl.createDiv("fcn-content-pane");
@@ -2002,13 +2004,13 @@ class FolderColumnNavigatorView extends ItemView {
         const sortControls = headerActions.createDiv("fcn-sort-controls");
         this.sortSelect = sortControls.createEl("select", {
             cls: "fcn-sort-select",
-            attr: { "aria-label": "文件列表排序字段" }
+            attr: { "aria-label": t("文件列表排序字段") }
         });
         [
-            ["name", "名称"],
-            ["modified", "修改日期"],
-            ["created", "创建日期"],
-            ["custom", "自定义排序"]
+            ["name", t("名称")],
+            ["modified", t("修改日期")],
+            ["created", t("创建日期")],
+            ["custom", t("自定义排序")]
         ].forEach(([value, label]) => {
             this.sortSelect.createEl("option", { value, text: label });
         });
@@ -2018,7 +2020,7 @@ class FolderColumnNavigatorView extends ItemView {
         });
         this.sortDirectionButton = sortControls.createEl("button", {
             cls: "fcn-sort-direction clickable-icon",
-            attr: { "aria-label": "切换排序方向" }
+            attr: { "aria-label": t("切换排序方向") }
         });
         this.sortDirectionButton.addEventListener("click", () => void this.plugin.toggleSortDirection());
         this.columnsEl = contentPane.createDiv("fcn-columns");
@@ -2154,45 +2156,45 @@ class FolderColumnNavigatorView extends ItemView {
         });
         const icon = this.calendarToggleButton.createSpan("fcn-calendar-toggle-icon");
         setIcon(icon, "calendar-days");
-        this.calendarToggleButton.createSpan({ text: "日历", cls: "fcn-calendar-toggle-label" });
+        this.calendarToggleButton.createSpan({ text: t("日历"), cls: "fcn-calendar-toggle-label" });
         const chevron = this.calendarToggleButton.createSpan("fcn-calendar-toggle-chevron");
         setIcon(chevron, "chevron-up");
         this.calendarToggleButton.addEventListener("click", () => this.toggleCalendar());
         this.calendarContentEl = this.calendarPane.createDiv("fcn-calendar-content");
         const toolbar = this.calendarContentEl.createDiv("fcn-calendar-toolbar");
-        const previousButton = this.createCalendarToolbarButton(toolbar, "chevron-left", "上一月");
+        const previousButton = this.createCalendarToolbarButton(toolbar, "chevron-left", t("上一月"));
         previousButton.addEventListener("click", () => this.navigateCalendar(-1));
         this.calendarToolbarTitle = toolbar.createEl("button", {
             cls: "fcn-calendar-title",
-            attr: { type: "button", "aria-label": "切换月视图和年视图" }
+            attr: { type: "button", "aria-label": t("切换月视图和年视图") }
         });
         this.calendarToolbarTitle.addEventListener("click", () => this.setCalendarDisplayMode(
             this.calendarDisplayMode === "month" ? "year" : "month"
         ));
-        const nextButton = this.createCalendarToolbarButton(toolbar, "chevron-right", "下一月");
+        const nextButton = this.createCalendarToolbarButton(toolbar, "chevron-right", t("下一月"));
         nextButton.addEventListener("click", () => this.navigateCalendar(1));
         const spacer = toolbar.createSpan("fcn-calendar-toolbar-spacer");
         spacer.setAttribute("aria-hidden", "true");
         const modeSwitcher = toolbar.createDiv("fcn-calendar-mode-switcher");
         this.calendarMonthModeButton = modeSwitcher.createEl("button", {
             cls: "fcn-calendar-mode-button",
-            text: "月",
-            attr: { type: "button", "aria-label": "显示月视图" }
+            text: t("月"),
+            attr: { type: "button", "aria-label": t("显示月视图") }
         });
         this.calendarMonthModeButton.addEventListener("click", () => this.setCalendarDisplayMode("month"));
         this.calendarWeekModeButton = modeSwitcher.createEl("button", {
             cls: "fcn-calendar-mode-button",
-            text: "周",
-            attr: { type: "button", "aria-label": "显示周视图" }
+            text: t("周"),
+            attr: { type: "button", "aria-label": t("显示周视图") }
         });
         this.calendarWeekModeButton.addEventListener("click", () => this.setCalendarDisplayMode("week"));
         this.calendarYearModeButton = modeSwitcher.createEl("button", {
             cls: "fcn-calendar-mode-button",
-            text: "年",
-            attr: { type: "button", "aria-label": "显示年选择" }
+            text: t("年"),
+            attr: { type: "button", "aria-label": t("显示年选择") }
         });
         this.calendarYearModeButton.addEventListener("click", () => this.setCalendarDisplayMode("year"));
-        const todayButton = this.createCalendarToolbarButton(toolbar, "crosshair", "回到今天");
+        const todayButton = this.createCalendarToolbarButton(toolbar, "crosshair", t("回到今天"));
         todayButton.addEventListener("click", () => this.goToCalendarToday());
         this.calendarGridEl = this.calendarContentEl.createDiv("fcn-calendar-grid");
         this.calendarWeekNumbersEl = this.calendarGridEl.createDiv("fcn-calendar-week-numbers");
@@ -2233,7 +2235,7 @@ class FolderColumnNavigatorView extends ItemView {
         this.calendarPane.toggleClass("is-standalone", this.isStandaloneCalendar);
         this.calendarPane.toggleClass("is-hidden-by-presentation", !shouldShowBottomCalendar);
         this.calendarToggleButton.setAttribute("aria-expanded", String(this.calendarExpanded));
-        this.calendarToggleButton.setAttribute("aria-label", this.calendarExpanded ? "收起日历" : "展开日历");
+        this.calendarToggleButton.setAttribute("aria-label", this.calendarExpanded ? t("收起日历") : t("展开日历"));
         const chevron = this.calendarToggleButton.querySelector<HTMLElement>(".fcn-calendar-toggle-chevron");
         if (chevron) {
             setIcon(chevron, this.calendarExpanded ? "chevron-down" : "chevron-up");
@@ -2266,11 +2268,11 @@ class FolderColumnNavigatorView extends ItemView {
             plugins: [dayGridPlugin, interactionPlugin],
             initialView: "dayGridMonth",
             initialDate: new Date(),
-            locale: zhCnLocale,
+            locale: interfaceLanguage() === "zh" ? zhCnLocale : "en",
             firstDay: 1,
             weekNumbers: false,
             dayCellContent: info => String(info.date.getDate()),
-            dayHeaderContent: info => ["日", "一", "二", "三", "四", "五", "六"][info.date.getDay()],
+            dayHeaderContent: info => calendarWeekday(info.date),
             headerToolbar: false,
             // Month padding must not leak into week mode: FullCalendar otherwise
             // extends a seven-day view to additional week rows with hidden dates.
@@ -2340,10 +2342,10 @@ class FolderColumnNavigatorView extends ItemView {
         }
         const date = this.calendar?.getDate() ?? new Date();
         this.calendarToolbarTitle.setText(this.calendarDisplayMode === "year"
-            ? `${date.getFullYear()} 年`
+            ? t("{0} 年", [date.getFullYear()])
             : this.calendarDisplayMode === "week"
-                ? `${date.getFullYear()} 年第 ${this.getIsoWeekNumber(date)} 周`
-            : `${date.getFullYear()}年${date.getMonth() + 1}月`);
+                ? t("{0} 年第 {1} 周", [date.getFullYear(), this.getIsoWeekNumber(date)])
+            : calendarMonth(date, true));
     }
 
     private renderCalendarYearPicker(): void {
@@ -2357,8 +2359,8 @@ class FolderColumnNavigatorView extends ItemView {
         for (let month = 0; month < 12; month += 1) {
             const monthButton = this.calendarYearPickerEl.createEl("button", {
                 cls: "fcn-calendar-year-month",
-                text: `${month + 1} 月`,
-                attr: { type: "button", "aria-label": `查看 ${year} 年 ${month + 1} 月` }
+                text: calendarMonth(new Date(year, month, 1)),
+                attr: { type: "button", "aria-label": t("查看 {0} 年 {1} 月", [year, month + 1]) }
             });
             const hasMatches = [...this.calendarDateMatches.keys()].some(key => key.startsWith(
                 `${year}-${String(month + 1).padStart(2, "0")}`
@@ -2461,7 +2463,7 @@ class FolderColumnNavigatorView extends ItemView {
             if (request !== this.calendarMatchRequest || !this.calendar) return;
             console.error("Folder Column Navigator: calendar index failed", error);
             this.calendarMatching = false; this.calendarMatchKey = "";
-            this.calendarMatchError = "日历索引失败，请切换月份重试。";
+            this.calendarMatchError = t("日历索引失败，请切换月份重试。");
             this.updateCalendarDateCells();
         });
     }
@@ -2498,7 +2500,7 @@ class FolderColumnNavigatorView extends ItemView {
             progress = this.calendarGridEl.parentElement.createDiv({ cls: "fcn-calendar-index-status", attr: { role: "status", "aria-live": "polite" } });
             this.calendarGridEl.before(progress);
         }
-        const progressText = this.calendarMatchError || (this.calendarMatching ? "正在更新日期索引…" : "");
+        const progressText = this.calendarMatchError || (this.calendarMatching ? t("正在更新日期索引…") : "");
         if (progress && progress.textContent !== progressText) progress.setText(progressText);
         const showHolidays = this.plugin.settings.calendarShowHolidays;
         this.calendarHostEl.toggleClass("fcn-calendar-with-holidays", showHolidays);
@@ -2510,7 +2512,7 @@ class FolderColumnNavigatorView extends ItemView {
         }
         const year = (this.calendar?.getDate() ?? new Date()).getFullYear();
         const statusText = showHolidays && !this.plugin.holidays.availableYears.includes(year)
-            ? `${year} 年节假日数据尚未收录，可在日历设置中联网更新。` : "";
+            ? t("{0} 年节假日数据尚未收录，可在日历设置中联网更新。", [year]) : "";
         if (status && status.textContent !== statusText) status.setText(statusText);
         this.calendarHostEl.querySelectorAll<HTMLElement>(".fc-daygrid-day[data-date]").forEach(cell => {
             const dateKey = cell.dataset.date ?? "";
@@ -2523,12 +2525,12 @@ class FolderColumnNavigatorView extends ItemView {
             if (holiday && frame && !cell.classList.contains("fc-day-other")) {
                 // Preserve nodes across resize/selection refreshes; rebuilding
                 // annotations needlessly dirties layout and can amplify observers.
-                const markerText = holiday.isOffDay ? "休" : "班";
+                const markerText = holiday.isOffDay ? t("休") : t("班");
                 if (!marker) frame.createSpan({ cls: "fcn-holiday-marker", text: markerText, attr: { "aria-hidden": "true" } });
                 else if (marker.textContent !== markerText) marker.setText(markerText);
                 if (holiday.isWeekend) name?.remove();
-                else if (!name) frame.createSpan({ cls: "fcn-holiday-name", text: holiday.name, attr: { "aria-hidden": "true" } });
-                else if (name.textContent !== holiday.name) name.setText(holiday.name);
+                else if (!name) frame.createSpan({ cls: "fcn-holiday-name", text: t(holiday.name), attr: { "aria-hidden": "true" } });
+                else if (name.textContent !== t(holiday.name)) name.setText(t(holiday.name));
             } else {
                 marker?.remove(); name?.remove();
             }
@@ -2547,23 +2549,23 @@ class FolderColumnNavigatorView extends ItemView {
             } else {
                 cell.removeAttribute("aria-current");
             }
-            cell.setAttribute("title", hasMatches ? `匹配 ${matchCount} 个文件${this.plugin.settings.dailyNote.enabled ? "（Cmd/Ctrl + 点击创建）" : ""}` :
-                this.plugin.settings.dailyNote.enabled ? "点击创建每日笔记" : "没有匹配文件");
+            cell.setAttribute("title", hasMatches ? t("匹配 {0} 个文件{1}", [matchCount, this.plugin.settings.dailyNote.enabled ? t("（Cmd/Ctrl + 点击创建）") : ""]) :
+                this.plugin.settings.dailyNote.enabled ? t("点击创建每日笔记") : t("没有匹配文件"));
             const dayNumber = cell.querySelector<HTMLElement>(".fc-daygrid-day-number");
             dayNumber?.setAttribute(
                 "aria-label",
-                hasMatches ? `${dateKey}，匹配 ${matchCount} 个文件` :
-                    `${dateKey}，${this.plugin.settings.dailyNote.enabled ? "点击创建每日笔记" : "没有匹配文件"}`
+                hasMatches ? t("{0}，匹配 {1} 个文件", [dateKey, matchCount]) :
+                    t("{0}，{1}", [dateKey, this.plugin.settings.dailyNote.enabled ? t("点击创建每日笔记") : t("没有匹配文件")])
             );
             if (dayNumber) {
                 dayNumber.dataset.fcnMatchCount = hasMatches ? String(matchCount) : "";
             }
             if (holiday) {
                 const description = holiday.isWeekend
-                    ? `周末 · ${holiday.unknownSchedule ? "该年调休数据未收录，仅按周末标记" : "休息"}`
-                    : `${holiday.name} · ${holiday.isOffDay ? "放假" : "调休上班"}`;
-                cell.setAttribute("title", `${description}；${cell.getAttribute("title") ?? ""}`);
-                dayNumber?.setAttribute("aria-label", `${dayNumber.getAttribute("aria-label") ?? dateKey}，${description}`);
+                    ? t("周末 · {0}", [holiday.unknownSchedule ? t("该年调休数据未收录，仅按周末标记") : t("休息")])
+                    : t("{0} · {1}", [t(holiday.name), holiday.isOffDay ? t("放假") : t("调休上班")]);
+                cell.setAttribute("title", t("{0}；{1}", [description, cell.getAttribute("title") ?? ""]));
+                dayNumber?.setAttribute("aria-label", t("{0}，{1}", [dayNumber.getAttribute("aria-label") ?? dateKey, description]));
             }
         });
     }
@@ -2583,7 +2585,7 @@ class FolderColumnNavigatorView extends ItemView {
             return;
         }
         if (existing) return;
-        const create = list.createEl("button", { text: "+ 创建每日笔记", cls: "fcn-file-item fcn-calendar-results-item fcn-calendar-create-note" });
+        const create = list.createEl("button", { text: t("+ 创建每日笔记"), cls: "fcn-file-item fcn-calendar-results-item fcn-calendar-create-note" });
         list.prepend(create);
         create.addEventListener("click", () => {
             const key = this.calendarSelectedDateKey;
@@ -2613,14 +2615,14 @@ class FolderColumnNavigatorView extends ItemView {
         }
         const header = this.calendarResultsEl.createDiv("fcn-calendar-results-header");
         header.createSpan({ text: this.calendarSelectedDateKey, cls: "fcn-calendar-results-date" });
-        header.createSpan({ text: `${files.length} 个文件`, cls: "fcn-calendar-results-count" });
+        header.createSpan({ text: t("{0} 个文件", [files.length]), cls: "fcn-calendar-results-count" });
         const list = this.calendarResultsEl.createDiv("fcn-calendar-results-list");
         list.dataset.date = this.calendarSelectedDateKey;
         this.updateCalendarCreateAction();
         this.calendarVirtualList = new CalendarVirtualList(list, files, (file, parent) => {
             const row = parent.createEl("button", {
                 cls: "fcn-file-item fcn-calendar-results-item",
-                attr: { type: "button", title: file.path, "aria-label": `打开 ${file.path}` }
+                attr: { type: "button", title: file.path, "aria-label": t("打开 {0}", [file.path]) }
             });
             if (this.plugin.settings.calendarShowFileIcons) {
                 const icon = row.createSpan("fcn-item-icon");
@@ -2716,7 +2718,7 @@ class FolderColumnNavigatorView extends ItemView {
         this.topNavigationFilterButton = this.createNavigationFilterButton(toolbarActions);
         this.rootFolderExpandButton = toolbarActions.createEl("button", {
             cls: "fcn-root-folder-expand clickable-icon",
-            attr: { type: "button", "aria-label": "展开更多一级目录" }
+            attr: { type: "button", "aria-label": t("展开更多一级目录") }
         });
         this.rootFolderExpandButton.createSpan("fcn-root-folder-expand-icon");
         this.rootFolderExpandButton.createSpan("fcn-root-folder-expand-label");
@@ -2776,7 +2778,7 @@ class FolderColumnNavigatorView extends ItemView {
     private createLocateButton(parent: HTMLElement): HTMLButtonElement {
         const button = parent.createEl("button", {
             cls: "fcn-icon-button clickable-icon",
-            attr: { type: "button", "aria-label": "定位当前笔记" }
+            attr: { type: "button", "aria-label": t("定位当前笔记") }
         });
         setIcon(button, "locate-fixed");
         button.addEventListener("click", () => this.revealActiveFile());
@@ -2786,7 +2788,7 @@ class FolderColumnNavigatorView extends ItemView {
     private createSettingsButton(parent: HTMLElement): HTMLButtonElement {
         const button = parent.createEl("button", {
             cls: "fcn-icon-button clickable-icon",
-            attr: { type: "button", "aria-label": "打开目录文件列表设置" }
+            attr: { type: "button", "aria-label": t("打开目录文件列表设置") }
         });
         setIcon(button, "settings");
         button.addEventListener("click", () => this.plugin.openSettings());
@@ -2796,7 +2798,7 @@ class FolderColumnNavigatorView extends ItemView {
     private createNavigationFilterButton(parent: HTMLElement): HTMLButtonElement {
         const button = parent.createEl("button", {
             cls: "fcn-filter-badge fcn-navigation-filter-badge is-hidden",
-            attr: { type: "button", title: "点击清除筛选" }
+            attr: { type: "button", title: t("点击清除筛选") }
         });
         button.addEventListener("click", () => this.clearFilter());
         return button;
@@ -3337,10 +3339,10 @@ class FolderColumnNavigatorView extends ItemView {
         if (icon) {
             this.setIconIfChanged(icon, this.rootFoldersExpanded ? "chevron-up" : "chevron-down");
         }
-        label?.setText(this.rootFoldersExpanded ? "收起" : "展开");
+        label?.setText(this.rootFoldersExpanded ? t("收起") : t("展开"));
         this.rootFolderExpandButton.setAttribute(
             "aria-label",
-            this.rootFoldersExpanded ? "收起一级目录" : "展开更多一级目录"
+            this.rootFoldersExpanded ? t("收起一级目录") : t("展开更多一级目录")
         );
     }
 
@@ -3357,8 +3359,8 @@ class FolderColumnNavigatorView extends ItemView {
         this.sortDirectionButton.setAttribute(
             "aria-label",
             this.plugin.settings.sortField === "custom"
-                ? "自定义排序由拖拽顺序决定"
-                : this.plugin.settings.sortDirection === "asc" ? "当前正序，点击切换为倒序" : "当前倒序，点击切换为正序"
+                ? t("自定义排序由拖拽顺序决定")
+                : this.plugin.settings.sortDirection === "asc" ? t("当前正序，点击切换为倒序") : t("当前倒序，点击切换为正序")
         );
         this.updateNavigationFilterButtons();
     }
@@ -3378,7 +3380,7 @@ class FolderColumnNavigatorView extends ItemView {
                 return;
             }
             button.toggleClass("is-hidden", !navigationFilterQuery);
-            button.setText(navigationFilterQuery ? `筛选：${navigationFilterQuery}` : "");
+            button.setText(navigationFilterQuery ? t("筛选：{0}", [navigationFilterQuery]) : "");
         });
     }
 
@@ -3467,8 +3469,8 @@ class FolderColumnNavigatorView extends ItemView {
         if (filterQuery) {
             const filterBadge = header.createEl("button", {
                 cls: "fcn-filter-badge",
-                text: `筛选：${filterQuery}`,
-                attr: { type: "button", title: "点击或按 Esc 清除筛选" }
+                text: t("筛选：{0}", [filterQuery]),
+                attr: { type: "button", title: t("点击或按 Esc 清除筛选") }
             });
             filterBadge.addEventListener("click", () => this.clearFilter());
         }
@@ -3476,11 +3478,11 @@ class FolderColumnNavigatorView extends ItemView {
         this.enableColumnMoveDropTarget(column, folder);
         const divider = column.createDiv("fcn-column-resize-divider");
         divider.setAttribute("role", "separator");
-        divider.setAttribute("aria-label", `调整“${folder.name}”列宽度`);
+        divider.setAttribute("aria-label", t("调整“{0}”列宽度", [folder.name]));
         divider.addEventListener("pointerdown", event => this.startColumnResize(event, path));
 
         if (columnIndex > 0 || path !== this.navigationBasePath) {
-            this.addSpecialListItem(list, columnIndex, "返回上一级",
+            this.addSpecialListItem(list, columnIndex, t("返回上一级"),
                 this.canReturnWithinCurrentColumn(columnIndex) ? "arrow-up" : "arrow-left", () => {
                 if (this.returnWithinCurrentColumn(columnIndex)) return;
                 if (this.collapseVerticalTreeLevel(columnIndex)) {
@@ -3506,7 +3508,7 @@ class FolderColumnNavigatorView extends ItemView {
             .sort((a, b) => this.compareItems(a, b, folder));
         if (children.length === 0) {
             const empty = list.createDiv("fcn-empty-state");
-            empty.setText(filterQuery ? `未找到“${filterQuery}”相关条目` : "此目录暂无文件或子目录");
+            empty.setText(filterQuery ? t("未找到“{0}”相关条目", [filterQuery]) : t("此目录暂无文件或子目录"));
             this.updateColumnPreferredWidth(column, path);
             return;
         }
@@ -3605,7 +3607,7 @@ class FolderColumnNavigatorView extends ItemView {
         renderFolderItems(folder, 0);
         if (itemIndex === 0 && !hasRenderableChildren) {
             const empty = list.createDiv("fcn-empty-state");
-            empty.setText(filterQuery ? `未找到“${filterQuery}”相关条目` : "此目录暂无文件或子目录");
+            empty.setText(filterQuery ? t("未找到“{0}”相关条目", [filterQuery]) : t("此目录暂无文件或子目录"));
         }
     }
 
@@ -3650,7 +3652,7 @@ class FolderColumnNavigatorView extends ItemView {
         groupableChildren.forEach((child, index) => {
             const values = groupValues[index];
             const isArchive = values !== null && values.some(value => archiveNames.has(value.toLocaleLowerCase()));
-            const groupKey = isArchive ? ARCHIVE_GROUP_KEY : values?.[0] ?? "其他";
+            const groupKey = isArchive ? ARCHIVE_GROUP_KEY : values?.[0] ?? t("其他");
             const items = grouped.get(groupKey) ?? [];
             items.push(child);
             grouped.set(groupKey, items);
@@ -3662,7 +3664,7 @@ class FolderColumnNavigatorView extends ItemView {
         const groups = [...grouped.entries()]
             .map(([key, items]) => ({
                 key,
-                label: key === ARCHIVE_GROUP_KEY ? "归档" : key,
+                label: key === ARCHIVE_GROUP_KEY ? t("归档") : key,
                 items,
                 isArchive: archiveGroups.has(key),
                 hasFolderNote: false
@@ -3673,7 +3675,7 @@ class FolderColumnNavigatorView extends ItemView {
                 // are semantic and must not be affected by pinnedGroups.
                 const position = (group: ItemGroup): number => group.isArchive
                     ? 2
-                    : group.key === "其他" ? 1 : 0;
+                    : group.key === t("其他") ? 1 : 0;
                 const positionDifference = position(a) - position(b);
                 if (positionDifference) {
                     return positionDifference;
@@ -3743,7 +3745,7 @@ class FolderColumnNavigatorView extends ItemView {
         if (this.plugin.isGroupPinned(group.key)) {
             const icon = header.createSpan("fcn-item-group-pin");
             setIcon(icon, "pin");
-            title.setAttribute("title", "已置顶分组");
+            title.setAttribute("title", t("已置顶分组"));
         }
         this.enableGroupDropTarget(header, group.key);
         header.addEventListener("contextmenu", event => {
@@ -3814,11 +3816,11 @@ class FolderColumnNavigatorView extends ItemView {
             isArchive: group.isArchive
         }));
         const existingKeys = new Set(options.map(option => option.key));
-        if (!existingKeys.has("其他")) {
-            options.push({ key: "其他", label: "其他", isArchive: false });
+        if (!existingKeys.has(t("其他"))) {
+            options.push({ key: t("其他"), label: t("其他"), isArchive: false });
         }
         if (!existingKeys.has(ARCHIVE_GROUP_KEY) && this.plugin.settings.groupArchiveNames.some(name => name.trim())) {
-            options.push({ key: ARCHIVE_GROUP_KEY, label: "归档", isArchive: true });
+            options.push({ key: ARCHIVE_GROUP_KEY, label: t("归档"), isArchive: true });
         }
         return options;
     }
@@ -3836,7 +3838,7 @@ class FolderColumnNavigatorView extends ItemView {
         }
         menu.addItem(item => item
             .setSection("action")
-            .setTitle("设置分组…")
+            .setTitle(t("设置分组…"))
             .setIcon("layers-2")
             .onClick(() => this.openGroupDestinationModal(items, options)));
     }
@@ -3859,14 +3861,14 @@ class FolderColumnNavigatorView extends ItemView {
     private async assignItemsToGroup(items: TAbstractFile[], groupKey: string): Promise<void> {
         const property = this.plugin.settings.groupProperty.trim();
         if (!property || !this.plugin.settings.groupItems || !groupKey) {
-            new Notice("请先在设置中开启分组并填写分组属性。", 3000);
+            new Notice(t("请先在设置中开启分组并填写分组属性。"), 3000);
             return;
         }
         const targets = items
             .map(item => ({ item, file: this.getGroupPropertyFile(item) }))
             .filter((target): target is { item: TAbstractFile; file: TFile } => Boolean(target.file));
         if (targets.length === 0) {
-            new Notice("只能为 Markdown 笔记或已有文件夹笔记设置分组。", 3500);
+            new Notice(t("只能为 Markdown 笔记或已有文件夹笔记设置分组。"), 3500);
             return;
         }
 
@@ -3897,9 +3899,9 @@ class FolderColumnNavigatorView extends ItemView {
             this.refresh();
         }
         if (failedCount > 0) {
-            new Notice(`已设置 ${updatedCount} 个项目，${failedCount} 个项目无法写入分组属性。`, 4500);
+            new Notice(t("已设置 {0} 个项目，{1} 个项目无法写入分组属性。", [updatedCount, failedCount]), 4500);
         } else {
-            new Notice(`已将 ${updatedCount} 个项目设置为“${groupKey === ARCHIVE_GROUP_KEY ? "归档" : groupKey}”。`, 2500);
+            new Notice(t("已将 {0} 个项目设置为“{1}”。", [updatedCount, groupKey === ARCHIVE_GROUP_KEY ? t("归档") : groupKey]), 2500);
         }
     }
 
@@ -4390,7 +4392,7 @@ class FolderColumnNavigatorView extends ItemView {
             await MarkdownRenderer.render(this.plugin.app, markdown, content, file.path, popover);
         } catch {
             if (token === this.hoverPreviewToken && this.hoverPopover === popover) {
-                content.setText("无法预览此文件。");
+                content.setText(t("无法预览此文件。"));
             }
         }
     }
@@ -4418,7 +4420,7 @@ class FolderColumnNavigatorView extends ItemView {
         const menu = this.createContextMenu(parent, origin, event);
         menu.addItem(item => item
             .setSection("action")
-            .setTitle(`移动 ${items.length} 个项目到…`)
+            .setTitle(t("移动 {0} 个项目到…", [items.length]))
             .setIcon("folder-input")
             .onClick(() => this.promptBatchMove(items)));
         this.addSetGroupMenuItem(menu, items);
@@ -4428,19 +4430,19 @@ class FolderColumnNavigatorView extends ItemView {
         if (markdownFiles.length === items.length) {
             menu.addItem(item => item
                 .setSection("action")
-                .setTitle("批量设置属性")
+                .setTitle(t("批量设置属性"))
                 .setIcon("list-plus")
                 .onClick(() => this.promptBatchSetProperty(markdownFiles)));
         }
         menu.addItem(item => item
             .setSection("action")
-            .setTitle("在当前目录新建文件夹")
+            .setTitle(t("在当前目录新建文件夹"))
             .setIcon("folder-plus")
             .onClick(() => this.promptCreateFolder(parent)));
         menu.addSeparator();
         menu.addItem(item => item
             .setSection("danger")
-            .setTitle(`删除 ${items.length} 个项目`)
+            .setTitle(t("删除 {0} 个项目", [items.length]))
             .setIcon("trash-2")
             .setWarning(true)
             .onClick(() => this.confirmBatchDelete(items)));
@@ -4449,14 +4451,14 @@ class FolderColumnNavigatorView extends ItemView {
 
     private showFileContextMenu(file: TFile, origin: HTMLElement, event?: MouseEvent): void {
         const menu = this.createContextMenu(file, origin, event);
-        menu.addItem(item => item.setSection("open").setTitle("打开").setIcon("file").onClick(() => void this.openFile(file)));
-        menu.addItem(item => item.setSection("open").setTitle("在新标签页打开").setIcon("file-plus").onClick(() => void this.openFileInNewTab(file)));
+        menu.addItem(item => item.setSection("open").setTitle(t("打开")).setIcon("file").onClick(() => void this.openFile(file)));
+        menu.addItem(item => item.setSection("open").setTitle(t("在新标签页打开")).setIcon("file-plus").onClick(() => void this.openFileInNewTab(file)));
         menu.addSeparator();
-        menu.addItem(item => item.setSection("action").setTitle("重命名").setIcon("edit-3").onClick(() => this.promptRename(file)));
-        menu.addItem(item => item.setSection("action").setTitle("移动到…").setIcon("folder-input").onClick(() => this.promptMove(file)));
+        menu.addItem(item => item.setSection("action").setTitle(t("重命名")).setIcon("edit-3").onClick(() => this.promptRename(file)));
+        menu.addItem(item => item.setSection("action").setTitle(t("移动到…")).setIcon("folder-input").onClick(() => this.promptMove(file)));
         this.addSetGroupMenuItem(menu, [file]);
         menu.addSeparator();
-        menu.addItem(item => item.setSection("danger").setTitle("删除").setIcon("trash-2").setWarning(true).onClick(() => void this.deleteItem(file)));
+        menu.addItem(item => item.setSection("danger").setTitle(t("删除")).setIcon("trash-2").setWarning(true).onClick(() => void this.deleteItem(file)));
         this.addExtensionMenuItems(menu, file);
         this.showContextMenu(menu, origin, event);
     }
@@ -4465,12 +4467,12 @@ class FolderColumnNavigatorView extends ItemView {
         const menu = this.createContextMenu(this.plugin.app.vault.getRoot(), origin, event);
         menu.addItem(item => item
             .setSection("action")
-            .setTitle(this.plugin.isGroupPinned(groupKey) ? "取消置顶分组" : "置顶分组")
+            .setTitle(this.plugin.isGroupPinned(groupKey) ? t("取消置顶分组") : t("置顶分组"))
             .setIcon(this.plugin.isGroupPinned(groupKey) ? "pin-off" : "pin")
             .onClick(() => void this.plugin.toggleGroupPinned(groupKey)));
         menu.addItem(item => item
             .setSection("action")
-            .setTitle(`分组：${groupLabel}`)
+            .setTitle(t("分组：{0}", [groupLabel]))
             .setDisabled(true));
         this.showContextMenu(menu, origin, event);
     }
@@ -4478,33 +4480,33 @@ class FolderColumnNavigatorView extends ItemView {
     private showFolderContextMenu(folder: TFolder, origin: HTMLElement, event?: MouseEvent, columnIndex?: number): void {
         const menu = this.createContextMenu(folder, origin, event);
         if (columnIndex !== undefined) {
-            menu.addItem(item => item.setSection("open").setTitle("打开目录").setIcon("folder-open").onClick(() => this.openFolderColumn(folder.path, columnIndex)));
+            menu.addItem(item => item.setSection("open").setTitle(t("打开目录")).setIcon("folder-open").onClick(() => this.openFolderColumn(folder.path, columnIndex)));
         }
-        menu.addItem(item => item.setSection("action-primary").setTitle("新建笔记").setIcon("file-plus").onClick(() => this.promptCreateNote(folder)));
+        menu.addItem(item => item.setSection("action-primary").setTitle(t("新建笔记")).setIcon("file-plus").onClick(() => this.promptCreateNote(folder)));
         menu.addItem(item => item
             .setSection("action-primary")
-            .setTitle("创建文件夹笔记")
+            .setTitle(t("创建文件夹笔记"))
             .setIcon("bookmark-plus")
             .onClick(() => void this.createFolderNote(folder)));
-        menu.addItem(item => item.setSection("action-primary").setTitle("新建子文件夹").setIcon("folder-plus").onClick(() => this.promptCreateFolder(folder)));
-        menu.addItem(item => item.setSection("action-primary").setTitle("新建白板").setIcon("layout-dashboard").onClick(() => this.promptCreateCanvas(folder)));
-        menu.addItem(item => item.setSection("action-primary").setTitle("新建数据库").setIcon("table-properties").onClick(() => this.promptCreateBase(folder)));
+        menu.addItem(item => item.setSection("action-primary").setTitle(t("新建子文件夹")).setIcon("folder-plus").onClick(() => this.promptCreateFolder(folder)));
+        menu.addItem(item => item.setSection("action-primary").setTitle(t("新建白板")).setIcon("layout-dashboard").onClick(() => this.promptCreateCanvas(folder)));
+        menu.addItem(item => item.setSection("action-primary").setTitle(t("新建数据库")).setIcon("table-properties").onClick(() => this.promptCreateBase(folder)));
         this.addSetGroupMenuItem(menu, [folder]);
         if (folder.path !== ROOT_PATH && !this.plugin.settings.customFolders.includes(folder.path)) {
             menu.addItem(item => item
                 .setSection("action")
-                .setTitle("添加到一级目录中")
+                .setTitle(t("添加到一级目录中"))
                 .setIcon("list-plus")
                 .onClick(() => void this.plugin.addCustomFolder(folder.path)));
         }
         if (folder.parent) {
             menu.addSeparator();
-            menu.addItem(item => item.setSection("action").setTitle("重命名").setIcon("edit-3").onClick(() => this.promptRename(folder)));
-            menu.addItem(item => item.setSection("action").setTitle("移动到…").setIcon("folder-input").onClick(() => this.promptMove(folder)));
+            menu.addItem(item => item.setSection("action").setTitle(t("重命名")).setIcon("edit-3").onClick(() => this.promptRename(folder)));
+            menu.addItem(item => item.setSection("action").setTitle(t("移动到…")).setIcon("folder-input").onClick(() => this.promptMove(folder)));
             menu.addSeparator();
             menu.addItem(item => item
                 .setSection("danger")
-                .setTitle("删除目录")
+                .setTitle(t("删除目录"))
                 .setIcon("trash-2")
                 .setWarning(true)
                 .onClick(() => void this.deleteItem(folder)));
@@ -4677,7 +4679,7 @@ class FolderColumnNavigatorView extends ItemView {
             separator.toggleClass("fcn-context-menu-filtered-out", Boolean(query));
         });
         if (this.contextMenuFilterEl) {
-            this.contextMenuFilterEl.setText(`筛选：${query}`);
+            this.contextMenuFilterEl.setText(t("筛选：{0}", [query]));
             this.contextMenuFilterEl.toggle(Boolean(query));
         }
         this.selectContextMenuItem(0);
@@ -4685,23 +4687,23 @@ class FolderColumnNavigatorView extends ItemView {
 
     private promptRename(item: TAbstractFile): void {
         if (!item.parent) {
-            new Notice("仓库根目录不能重命名。", 2500);
+            new Notice(t("仓库根目录不能重命名。"), 2500);
             return;
         }
-        new TextInputModal(this.plugin.app, "重命名", "输入新名称", item.name, "保存", async name => {
+        new TextInputModal(this.plugin.app, t("重命名"), t("输入新名称"), item.name, t("保存"), async name => {
             const nextPath = joinVaultPath(item.parent!, name);
             if (nextPath === item.path) {
                 return;
             }
             if (this.plugin.app.vault.getAbstractFileByPath(nextPath)) {
-                new Notice("同名文件或目录已存在。", 3000);
+                new Notice(t("同名文件或目录已存在。"), 3000);
                 return;
             }
             await this.plugin.app.fileManager.renameFile(item, nextPath);
         }, name => {
             const nextPath = joinVaultPath(item.parent!, name);
             return nextPath !== item.path && this.plugin.app.vault.getAbstractFileByPath(nextPath)
-                ? "同名文件或目录已存在。"
+                ? t("同名文件或目录已存在。")
                 : null;
         }).open();
     }
@@ -4713,7 +4715,7 @@ class FolderColumnNavigatorView extends ItemView {
     private promptBatchMove(items: TAbstractFile[]): void {
         const parentPath = items[0]?.parent?.path;
         if (!parentPath || items.some(item => item.parent?.path !== parentPath)) {
-            new Notice("只能批量移动同一目录下的项目。", 3000);
+            new Notice(t("只能批量移动同一目录下的项目。"), 3000);
             return;
         }
         const excludedPaths = new Set<string>();
@@ -4746,12 +4748,12 @@ class FolderColumnNavigatorView extends ItemView {
             return;
         }
         if (items.some(item => !item.parent || targetFolder.path === item.parent.path)) {
-            new Notice("目标目录不能是项目当前所在目录。", 3000);
+            new Notice(t("目标目录不能是项目当前所在目录。"), 3000);
             return;
         }
         if (items.some(item => item instanceof TFolder &&
             (targetFolder.path === item.path || targetFolder.path.startsWith(`${item.path}/`)))) {
-            new Notice("不能将文件夹移动到自身或其子目录。", 3000);
+            new Notice(t("不能将文件夹移动到自身或其子目录。"), 3000);
             return;
         }
         const moves = items.map(item => ({
@@ -4760,7 +4762,7 @@ class FolderColumnNavigatorView extends ItemView {
             kind: item instanceof TFolder ? "folder" as const : "file" as const
         }));
         if (moves.some(move => Boolean(this.plugin.app.vault.getAbstractFileByPath(move.nextPath)))) {
-            new Notice("目标目录已有同名文件或目录，未移动任何项目。", 3500);
+            new Notice(t("目标目录已有同名文件或目录，未移动任何项目。"), 3500);
             return;
         }
         try {
@@ -4769,7 +4771,7 @@ class FolderColumnNavigatorView extends ItemView {
             }
         } catch (error) {
             console.error("Folder Column Navigator: batch move failed", error);
-            new Notice("移动过程中发生错误，请检查文件状态。", 4000);
+            new Notice(t("移动过程中发生错误，请检查文件状态。"), 4000);
             this.refresh();
             return;
         }
@@ -4778,7 +4780,7 @@ class FolderColumnNavigatorView extends ItemView {
         if (firstMove) {
             this.revealMovedItem(targetFolder, firstMove.nextPath, firstMove.kind);
         }
-        new Notice(`已移动 ${moves.length} 个项目。`, 2500);
+        new Notice(t("已移动 {0} 个项目。", [moves.length]), 2500);
     }
 
     private canReorderItems(items: TAbstractFile[], targetItem: TAbstractFile, parent: TFolder): boolean {
@@ -4828,9 +4830,9 @@ class FolderColumnNavigatorView extends ItemView {
     private confirmBatchDelete(items: TAbstractFile[]): void {
         new ConfirmationModal(
             this.plugin.app,
-            "确认删除",
-            `确定要将选中的 ${items.length} 个文件或目录移到系统废纸篓吗？`,
-            "删除",
+            t("确认删除"),
+            t("确定要将选中的 {0} 个文件或目录移到系统废纸篓吗？", [items.length]),
+            t("删除"),
             async () => {
                 let deletedCount = 0;
                 try {
@@ -4840,12 +4842,12 @@ class FolderColumnNavigatorView extends ItemView {
                     }
                 } catch (error) {
                     console.error("Folder Column Navigator: batch deletion failed", error);
-                    new Notice(`已删除 ${deletedCount} 个项目，后续删除失败。`, 4000);
+                    new Notice(t("已删除 {0} 个项目，后续删除失败。", [deletedCount]), 4000);
                     this.refresh();
                     return;
                 }
                 this.clearItemSelection();
-                new Notice(`已删除 ${deletedCount} 个项目。`, 2500);
+                new Notice(t("已删除 {0} 个项目。", [deletedCount]), 2500);
             }
         ).open();
     }
@@ -4887,7 +4889,7 @@ class FolderColumnNavigatorView extends ItemView {
         if (detectedTypes.size > 1) {
             return {
                 type: null,
-                error: "所选文件中的同名属性类型不一致，不能批量设置。"
+                error: t("所选文件中的同名属性类型不一致，不能批量设置。")
             };
         }
         return {
@@ -4935,13 +4937,13 @@ class FolderColumnNavigatorView extends ItemView {
             const values = rawValue.split(/[,，\n]/).map(value => value.trim()).filter(Boolean);
             return values.length > 0
                 ? { value: values, error: null }
-                : { value: null, error: "请输入至少一个列表值。" };
+                : { value: null, error: t("请输入至少一个列表值。") };
         }
         if (type === "number") {
             const value = Number(rawValue);
             return Number.isFinite(value)
                 ? { value, error: null }
-                : { value: null, error: "属性值必须是有效数字。" };
+                : { value: null, error: t("属性值必须是有效数字。") };
         }
         if (type === "checkbox") {
             const normalized = rawValue.toLocaleLowerCase();
@@ -4951,12 +4953,12 @@ class FolderColumnNavigatorView extends ItemView {
             if (["false", "0", "否", "未勾选", "unchecked"].includes(normalized)) {
                 return { value: false, error: null };
             }
-            return { value: null, error: "复选框值请输入 true/false、是/否或 1/0。" };
+            return { value: null, error: t("复选框值请输入 true/false、是/否或 1/0。") };
         }
         if (type === "date") {
             const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(rawValue);
             if (!match || !this.isValidDateParts(Number(match[1]), Number(match[2]), Number(match[3]))) {
-                return { value: null, error: "日期必须使用 YYYY-MM-DD 格式。" };
+                return { value: null, error: t("日期必须使用 YYYY-MM-DD 格式。") };
             }
             return { value: rawValue, error: null };
         }
@@ -4965,7 +4967,7 @@ class FolderColumnNavigatorView extends ItemView {
             !this.isValidDateParts(Number(match[1]), Number(match[2]), Number(match[3])) ||
             Number(match[4]) > 23 ||
             Number(match[5]) > 59) {
-            return { value: null, error: "日期时间必须使用 YYYY-MM-DDTHH:mm 格式。" };
+            return { value: null, error: t("日期时间必须使用 YYYY-MM-DDTHH:mm 格式。") };
         }
         return { value: rawValue.replace(" ", "T"), error: null };
     }
@@ -4976,7 +4978,7 @@ class FolderColumnNavigatorView extends ItemView {
             return resolution.error;
         }
         if (resolution.type && resolution.type !== request.type) {
-            return "输入类型与现有属性类型不匹配。";
+            return t("输入类型与现有属性类型不匹配。");
         }
         const parsed = this.parsePropertyValue(request.type, request.rawValue);
         if (parsed.error) {
@@ -5008,7 +5010,7 @@ class FolderColumnNavigatorView extends ItemView {
             }
         } catch (error) {
             console.error("Folder Column Navigator: batch property update failed", error);
-            return `属性写入失败；已成功修改 ${results.length} 个文件，请检查文件状态。`;
+            return t("属性写入失败；已成功修改 {0} 个文件，请检查文件状态。", [results.length]);
         }
         window.setTimeout(() => {
             new PropertyUpdateSummaryModal(this.plugin.app, request.property, results).open();
@@ -5027,19 +5029,19 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private promptCreateNote(folder: TFolder): void {
-        this.promptCreateFile(folder, "新建笔记", "未命名笔记.md", "创建", name => name.endsWith(".md") ? name : `${name}.md`, "");
+        this.promptCreateFile(folder, t("新建笔记"), t("未命名笔记.md"), t("创建"), name => name.endsWith(".md") ? name : `${name}.md`, "");
     }
 
     /** Create the conventional same-name folder note directly inside a folder. */
     private async createFolderNote(folder: TFolder): Promise<void> {
         const existingFolderNote = this.getFolderNote(folder, true);
         if (existingFolderNote) {
-            new Notice(`当前文件夹已经存在文件夹笔记：${existingFolderNote.name}`, 3000);
+            new Notice(t("当前文件夹已经存在文件夹笔记：{0}", [existingFolderNote.name]), 3000);
             return;
         }
         const path = joinVaultPath(folder, `${folder.name}.md`);
         if (this.plugin.app.vault.getAbstractFileByPath(path)) {
-            new Notice("同名文件或目录已存在。", 3000);
+            new Notice(t("同名文件或目录已存在。"), 3000);
             return;
         }
         const file = await this.plugin.app.vault.create(path, "");
@@ -5047,10 +5049,10 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private promptCreateFolder(folder: TFolder): void {
-        new TextInputModal(this.plugin.app, "新建子文件夹", "输入文件夹名称", "未命名文件夹", "创建", async name => {
+        new TextInputModal(this.plugin.app, t("新建子文件夹"), t("输入文件夹名称"), t("未命名文件夹"), t("创建"), async name => {
             const path = joinVaultPath(folder, name);
             if (this.plugin.app.vault.getAbstractFileByPath(path)) {
-                new Notice("同名文件或目录已存在。", 3000);
+                new Notice(t("同名文件或目录已存在。"), 3000);
                 return;
             }
             await this.plugin.app.vault.createFolder(path);
@@ -5058,11 +5060,11 @@ class FolderColumnNavigatorView extends ItemView {
     }
 
     private promptCreateCanvas(folder: TFolder): void {
-        this.promptCreateFile(folder, "新建白板", "未命名白板.canvas", "创建", name => name.endsWith(".canvas") ? name : `${name}.canvas`, "{\n\t\"nodes\": [],\n\t\"edges\": []\n}");
+        this.promptCreateFile(folder, t("新建白板"), t("未命名白板.canvas"), t("创建"), name => name.endsWith(".canvas") ? name : `${name}.canvas`, "{\n\t\"nodes\": [],\n\t\"edges\": []\n}");
     }
 
     private promptCreateBase(folder: TFolder): void {
-        this.promptCreateFile(folder, "新建数据库", "未命名数据库.base", "创建", name => name.endsWith(".base") ? name : `${name}.base`, "views:\n  - type: table\n    name: 表格\n");
+        this.promptCreateFile(folder, t("新建数据库"), t("未命名数据库.base"), t("创建"), name => name.endsWith(".base") ? name : `${name}.base`, t("views:\n  - type: table\n    name: 表格\n"));
     }
 
     private promptCreateFile(
@@ -5073,10 +5075,10 @@ class FolderColumnNavigatorView extends ItemView {
         normalizeName: (name: string) => string,
         content: string
     ): void {
-        new TextInputModal(this.plugin.app, title, "输入名称", initialName, submitLabel, async name => {
+        new TextInputModal(this.plugin.app, title, t("输入名称"), initialName, submitLabel, async name => {
             const path = joinVaultPath(folder, normalizeName(name));
             if (this.plugin.app.vault.getAbstractFileByPath(path)) {
-                new Notice("同名文件或目录已存在。", 3000);
+                new Notice(t("同名文件或目录已存在。"), 3000);
                 return;
             }
             const file = await this.plugin.app.vault.create(path, content);
@@ -5086,7 +5088,7 @@ class FolderColumnNavigatorView extends ItemView {
 
     private getDuplicateNameError(folder: TFolder, name: string): string | null {
         return this.plugin.app.vault.getAbstractFileByPath(joinVaultPath(folder, name))
-            ? "同名文件或目录已存在。"
+            ? t("同名文件或目录已存在。")
             : null;
     }
 
@@ -5399,7 +5401,7 @@ class FolderColumnNavigatorView extends ItemView {
     revealActiveFile(): void {
         const file = this.plugin.app.workspace.getActiveFile();
         if (!file) {
-            new Notice("当前没有打开的笔记。", 3000);
+            new Notice(t("当前没有打开的笔记。"), 3000);
             return;
         }
 
@@ -6397,7 +6399,7 @@ class FolderColumnNavigatorView extends ItemView {
     private showNavigationMenu(event: MouseEvent): void {
         event.preventDefault();
         const menu = new Menu();
-        menu.addItem(item => item.setTitle("刷新文件列表").setIcon("refresh-cw").onClick(() => this.refresh()));
+        menu.addItem(item => item.setTitle(t("刷新文件列表")).setIcon("refresh-cw").onClick(() => this.refresh()));
         menu.showAtMouseEvent(event);
     }
 }
@@ -6440,7 +6442,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
         description.addClass("fcn-settings-list-description");
         const icon = document.createElement("span");
         icon.addClass("fcn-settings-list-description-icon");
-        icon.setAttribute("aria-label", "自定义目录");
+        icon.setAttribute("aria-label", t("自定义目录"));
         setIcon(icon, "bookmark");
         description.append(icon, document.createTextNode(path));
         fragment.append(description);
@@ -6451,17 +6453,17 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
         return [
             {
                 type: "page",
-                name: "导航",
-                desc: "一级目录排序、布局和自定义目录。",
+                name: t("导航"),
+                desc: t("一级目录排序、布局和自定义目录。"),
                 items: [
                     {
-                        name: "一级目录置顶展示",
-                        desc: "将一级目录放到顶部标签区域，下面保留当前目录的多级展开区域。",
+                        name: t("一级目录置顶展示"),
+                        desc: t("将一级目录放到顶部标签区域，下面保留当前目录的多级展开区域。"),
                         control: { type: "toggle", key: "showRootFoldersAtTop" }
                     },
                     {
-                        name: "顶部默认展示行数",
-                        desc: "顶部一级目录超过这个行数后，点击展开按钮查看更多目录。",
+                        name: t("顶部默认展示行数"),
+                        desc: t("顶部一级目录超过这个行数后，点击展开按钮查看更多目录。"),
                         visible: () => this.plugin.settings.showRootFoldersAtTop,
                         control: {
                             type: "slider",
@@ -6469,34 +6471,34 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                             min: 1,
                             max: 8,
                             step: 1,
-                            displayFormat: value => `${value} 行`
+                            displayFormat: value => t("{0} 行", [value])
                         }
                     },
                     {
-                        name: "深层目录纵向展开",
-                        desc: "开启后，超过最大水平列数的目录会在最后一列按树形垂直展开。",
+                        name: t("深层目录纵向展开"),
+                        desc: t("开启后，超过最大水平列数的目录会在最后一列按树形垂直展开。"),
                         control: { type: "toggle", key: "verticalTreeEnabled" }
                     },
                     {
-                        name: "点击目录在当前列打开",
-                        desc: "从指定列开始，单击目录以其内容替换当前列，不再新增右侧列；优先于纵向展开。默认开启。",
+                        name: t("点击目录在当前列打开"),
+                        desc: t("从指定列开始，单击目录以其内容替换当前列，不再新增右侧列；优先于纵向展开。默认开启。"),
                         control: { type: "toggle", key: "openFoldersInCurrentColumn" }
                     },
                     {
-                        name: "打开目录后的横向定位",
-                        desc: "点击或 Enter 展开新列时，选择靠左定位的列，或将新展开列靠右显示。保留左侧 1/2 列表示将操作列前面的第 1/2 列靠左；不足时从首列开始。默认当前操作列靠左；左侧一级目录栏保持可见。上下方向键、当前列打开和纵向展开不触发。",
+                        name: t("打开目录后的横向定位"),
+                        desc: t("点击或 Enter 展开新列时，选择靠左定位的列，或将新展开列靠右显示。保留左侧 1/2 列表示将操作列前面的第 1/2 列靠左；不足时从首列开始。默认当前操作列靠左；左侧一级目录栏保持可见。上下方向键、当前列打开和纵向展开不触发。"),
                         control: { type: "dropdown", key: "columnClickAlignment", options: COLUMN_CLICK_ALIGNMENT_OPTIONS }
                     },
                     {
-                        name: "当前列打开起始列",
-                        desc: "按文件列表从左到右计数，默认第 3 列；Enter 与点击共用，右方向键保留展开行为。",
+                        name: t("当前列打开起始列"),
+                        desc: t("按文件列表从左到右计数，默认第 3 列；Enter 与点击共用，右方向键保留展开行为。"),
                         visible: () => this.plugin.settings.openFoldersInCurrentColumn,
                         control: { type: "slider", key: "currentColumnStart", min: 1, max: 8, step: 1,
-                            displayFormat: value => `第 ${value} 列` }
+                            displayFormat: value => t("第 {0} 列", [value]) }
                     },
                     {
-                        name: "最大水平列数",
-                        desc: "保留的水平目录列数量，超过后改为纵向树形展开。默认 4 列。",
+                        name: t("最大水平列数"),
+                        desc: t("保留的水平目录列数量，超过后改为纵向树形展开。默认 4 列。"),
                         visible: () => this.plugin.settings.verticalTreeEnabled,
                         control: {
                             type: "slider",
@@ -6504,25 +6506,25 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                             min: MIN_VERTICAL_TREE_COLUMNS,
                             max: MAX_VERTICAL_TREE_COLUMNS,
                             step: 1,
-                            displayFormat: value => `${value} 列`
+                            displayFormat: value => t("{0} 列", [value])
                         }
                     },
                     {
-                        name: "展开时折叠兄弟目录",
-                        desc: "开启后，展开目录时自动收起同级已展开目录；默认保留兄弟目录。",
+                        name: t("展开时折叠兄弟目录"),
+                        desc: t("开启后，展开目录时自动收起同级已展开目录；默认保留兄弟目录。"),
                         visible: () => this.plugin.settings.verticalTreeEnabled,
                         control: { type: "toggle", key: "verticalTreeCollapseSiblings" }
                     },
                     {
-                        name: "添加自定义目录",
-                        desc: "例如：工作/项目，路径必须存在于当前仓库。",
+                        name: t("添加自定义目录"),
+                        desc: t("例如：工作/项目，路径必须存在于当前仓库。"),
                         render: setting => {
                             let inputValue = "";
                             let inputEl: HTMLInputElement | null = null;
                             setting.addText(text => {
                                 inputEl = text.inputEl;
                                 return text
-                                    .setPlaceholder("工作/项目")
+                                    .setPlaceholder(t("工作/项目"))
                                     .onChange(value => {
                                         inputValue = value;
                                     });
@@ -6544,7 +6546,7 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                 }
                             });
                             setting
-                                .addButton(button => button.setButtonText("添加").setCta().onClick(() => {
+                                .addButton(button => button.setButtonText(t("添加")).setCta().onClick(() => {
                                     void this.plugin.addCustomFolder(inputValue).then(added => {
                                         if (added) {
                                             this.refreshSettingsTab();
@@ -6555,9 +6557,9 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                     },
                     {
                         type: "list",
-                        heading: "一级目录与自定义目录",
-                        desc: "拖动左侧手柄调整一级目录和自定义目录的显示顺序。",
-                        emptyState: "还没有可展示的目录。",
+                        heading: t("一级目录与自定义目录"),
+                        desc: t("拖动左侧手柄调整一级目录和自定义目录的显示顺序。"),
+                        emptyState: t("还没有可展示的目录。"),
                         items: this.plugin.getNavigationSettingsEntries().map(entry => ({
                             name: entry.name,
                             desc: entry.kind === "custom"
@@ -6568,18 +6570,18 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                     setting
                                         .addExtraButton(button => button
                                             .setIcon(this.plugin.settings.hiddenRootPaths.includes(entry.path) ? "eye" : "eye-off")
-                                            .setTooltip(this.plugin.settings.hiddenRootPaths.includes(entry.path) ? "显示一级目录" : "隐藏一级目录")
+                                            .setTooltip(this.plugin.settings.hiddenRootPaths.includes(entry.path) ? t("显示一级目录") : t("隐藏一级目录"))
                                             .onClick(() => void this.plugin.toggleHiddenRoot(entry.path).then(() => this.refreshSettingsTab())));
                                     return;
                                 }
                                 setting
                                     .addText(text => text
-                                        .setPlaceholder("显示名称")
+                                        .setPlaceholder(t("显示名称"))
                                         .setValue(this.plugin.settings.customFolderNames[entry.path] ?? "")
                                         .onChange(value => void this.plugin.updateCustomFolderDisplayName(entry.path, value)))
                                     .addExtraButton(button => button
                                         .setIcon("trash")
-                                        .setTooltip("移除自定义目录")
+                                        .setTooltip(t("移除自定义目录"))
                                         .onClick(() => void this.plugin.removeCustomFolder(entry.path).then(() => this.refreshSettingsTab())));
                             }
                         })),
@@ -6598,29 +6600,29 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
             },
             {
                 type: "page",
-                name: "显示",
-                desc: "名称排版、条目详情与图标。",
+                name: t("显示"),
+                desc: t("名称排版、条目详情与图标。"),
                 items: [
                     {
                         type: "group",
-                        heading: "主题",
+                        heading: t("主题"),
                         items: [
                             {
-                                name: "主题风格",
-                                desc: "立即应用到导航、文件树、分组、日历、按钮和右键菜单；插件保存的选择会在启动时稳定恢复。",
+                                name: t("主题风格"),
+                                desc: t("立即应用到导航、文件树、分组、日历、按钮和右键菜单；插件保存的选择会在启动时稳定恢复。"),
                                 control: {
                                     type: "dropdown",
                                     key: "themeStyle",
                                     options: {
-                                        simple: "简洁分格（默认）",
-                                        colorful: "彩色风格",
-                                        journal: "手帐风格"
+                                        simple: t("简洁分格（默认）"),
+                                        colorful: t("彩色风格"),
+                                        journal: t("手帐风格")
                                     }
                                 }
                             },
                             {
-                                name: "彩色配色",
-                                desc: "为彩色风格切换一套协调的目录、分组、菜单和日历强调色。",
+                                name: t("彩色配色"),
+                                desc: t("为彩色风格切换一套协调的目录、分组、菜单和日历强调色。"),
                                 visible: () => this.plugin.settings.themeStyle === "colorful",
                                 control: {
                                     type: "dropdown",
@@ -6629,8 +6631,8 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                 }
                             },
                             {
-                                name: "彩虹目录",
-                                desc: "按目录分配不同颜色，默认开启；关闭后移除目录背景渐变和彩色装饰条，顶部标签和分组使用统一强调色。",
+                                name: t("彩虹目录"),
+                                desc: t("按目录分配不同颜色，默认开启；关闭后移除目录背景渐变和彩色装饰条，顶部标签和分组使用统一强调色。"),
                                 visible: () => this.plugin.settings.themeStyle === "colorful",
                                 control: { type: "toggle", key: "rainbowFolders" }
                             }
@@ -6638,11 +6640,11 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                     },
                     {
                         type: "group",
-                        heading: "浮层",
+                        heading: t("浮层"),
                         items: [
                             {
-                                name: "右键菜单背景不透明度",
-                                desc: "只调整菜单底色，不影响文字和图标。数值越低透出背景越多；默认 70%。",
+                                name: t("右键菜单背景不透明度"),
+                                desc: t("只调整菜单底色，不影响文字和图标。数值越低透出背景越多；默认 70%。"),
                                 control: {
                                     type: "slider",
                                     key: "contextMenuOpacity",
@@ -6653,8 +6655,8 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                 }
                             },
                             {
-                                name: "悬浮预览背景不透明度",
-                                desc: "只调整预览窗口底色，不影响预览内容。数值越低透出背景越多；默认 70%。",
+                                name: t("悬浮预览背景不透明度"),
+                                desc: t("只调整预览窗口底色，不影响预览内容。数值越低透出背景越多；默认 70%。"),
                                 visible: () => this.plugin.settings.enableHoverPreview,
                                 control: {
                                     type: "slider",
@@ -6669,31 +6671,31 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                     },
                     {
                         type: "group",
-                        heading: "文字与布局",
+                        heading: t("文字与布局"),
                         items: [
                             {
-                                name: "显示条目分割线",
-                                desc: "显示文件、目录条目之间的横向分割线；关闭不影响列边界和分组标题。",
+                                name: t("显示条目分割线"),
+                                desc: t("显示文件、目录条目之间的横向分割线；关闭不影响列边界和分组标题。"),
                                 control: { type: "toggle", key: "showItemSeparators" }
                             },
                             {
-                                name: "一级目录名称字号",
-                                desc: "调整左侧模式下一级目录的文字大小。顶部目录标签使用“文件树名称字号”。",
+                                name: t("一级目录名称字号"),
+                                desc: t("调整左侧模式下一级目录的文字大小。顶部目录标签使用“文件树名称字号”。"),
                                 control: this.itemFontSlider("rootFolderFontSize")
                             },
                             {
-                                name: "文件树名称字号",
-                                desc: "调整文件树中目录和文件名称；顶部模式下也用于一级目录标签。",
+                                name: t("文件树名称字号"),
+                                desc: t("调整文件树中目录和文件名称；顶部模式下也用于一级目录标签。"),
                                 control: this.itemFontSlider("fileNameFontSize")
                             },
                             {
-                                name: "长名称自动换行",
-                                desc: "目录和文件名称超出列宽时换行显示；关闭后以省略号截断。",
+                                name: t("长名称自动换行"),
+                                desc: t("目录和文件名称超出列宽时换行显示；关闭后以省略号截断。"),
                                 control: { type: "toggle", key: "wrapItemNames" }
                             },
                             {
-                                name: "名称最大行数",
-                                desc: "达到最大行数后截断，避免单个条目占用过多高度。默认 2 行。",
+                                name: t("名称最大行数"),
+                                desc: t("达到最大行数后截断，避免单个条目占用过多高度。默认 2 行。"),
                                 visible: () => this.plugin.settings.wrapItemNames,
                                 control: {
                                     type: "slider",
@@ -6701,33 +6703,33 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                     min: MIN_ITEM_NAME_WRAP_LINES,
                                     max: MAX_ITEM_NAME_WRAP_LINES,
                                     step: 1,
-                                    displayFormat: value => `${value} 行`
+                                    displayFormat: value => t("{0} 行", [value])
                                 }
                             },
                             {
-                                name: "文件树名称左对齐",
-                                desc: "文件未显示图标而文件夹显示图标时，为文件保留图标位置，使目录和文件名称左对齐。",
+                                name: t("文件树名称左对齐"),
+                                desc: t("文件未显示图标而文件夹显示图标时，为文件保留图标位置，使目录和文件名称左对齐。"),
                                 control: { type: "toggle", key: "alignFileTreeNames" }
                             },
                             {
-                                name: "隐藏文件后缀名",
-                                desc: "文件列表只显示文件基础名称；右侧类型缩写仍由“显示条目元信息”控制。",
+                                name: t("隐藏文件后缀名"),
+                                desc: t("文件列表只显示文件基础名称；右侧类型缩写仍由“显示条目元信息”控制。"),
                                 control: { type: "toggle", key: "hideFileExtensions" }
                             }
                         ]
                     },
                     {
                         type: "group",
-                        heading: "条目详情",
+                        heading: t("条目详情"),
                         items: [
                             {
-                                name: "显示条目元信息",
-                                desc: "在目录右侧显示子文件和子目录数量，在文件右侧显示文件类型。",
+                                name: t("显示条目元信息"),
+                                desc: t("在目录右侧显示子文件和子目录数量，在文件右侧显示文件类型。"),
                                 control: { type: "toggle", key: "showItemMetadata" }
                             },
                             {
-                                name: "文件属性名称",
-                                desc: "每行一个 Frontmatter 属性。展示所有有值的属性，作为文件名称下方的次级信息。",
+                                name: t("文件属性名称"),
+                                desc: t("每行一个 Frontmatter 属性。展示所有有值的属性，作为文件名称下方的次级信息。"),
                                 control: {
                                     type: "textarea",
                                     key: "fileMetadataKeysText",
@@ -6735,28 +6737,28 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                 }
                             },
                             {
-                                name: "展示属性名",
-                                desc: "在文件和文件夹笔记的属性值前显示属性名；默认只显示属性值。",
+                                name: t("展示属性名"),
+                                desc: t("在文件和文件夹笔记的属性值前显示属性名；默认只显示属性值。"),
                                 control: { type: "toggle", key: "showMetadataNames" }
                             },
                             {
-                                name: "一级目录使用属性作为名称",
-                                desc: "用一级目录（包括自定义目录）对应文件夹笔记的属性替换显示名称。",
+                                name: t("一级目录使用属性作为名称"),
+                                desc: t("用一级目录（包括自定义目录）对应文件夹笔记的属性替换显示名称。"),
                                 control: { type: "toggle", key: "useRootFolderPropertyNames" }
                             },
                             {
-                                name: "目录树使用属性作为名称",
-                                desc: "用目录对应文件夹笔记的属性替换文件树中的目录名称。",
+                                name: t("目录树使用属性作为名称"),
+                                desc: t("用目录对应文件夹笔记的属性替换文件树中的目录名称。"),
                                 control: { type: "toggle", key: "useFolderTreePropertyNames" }
                             },
                             {
-                                name: "文件使用属性作为名称",
-                                desc: "用文件自身属性替换文件名称；属性为数组时取第一个值。",
+                                name: t("文件使用属性作为名称"),
+                                desc: t("用文件自身属性替换文件名称；属性为数组时取第一个值。"),
                                 control: { type: "toggle", key: "useFilePropertyNames" }
                             },
                             {
-                                name: "名称属性",
-                                desc: "以上开关读取的属性名称，默认 aliases。",
+                                name: t("名称属性"),
+                                desc: t("以上开关读取的属性名称，默认 aliases。"),
                                 visible: () => this.plugin.settings.useRootFolderPropertyNames ||
                                     this.plugin.settings.useFolderTreePropertyNames ||
                                     this.plugin.settings.useFilePropertyNames,
@@ -6767,34 +6769,34 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                 }
                             },
                             {
-                                name: "文件日期",
-                                desc: "作为文件名称下方的次级信息展示。",
+                                name: t("文件日期"),
+                                desc: t("作为文件名称下方的次级信息展示。"),
                                 control: {
                                     type: "dropdown",
                                     key: "fileDateDisplay",
-                                    options: { none: "不显示", created: "创建日期", modified: "修改日期" }
+                                    options: { none: t("不显示"), created: t("创建日期"), modified: t("修改日期") }
                                 }
                             }
                         ]
                     },
                     {
                         type: "group",
-                        heading: "交互",
+                        heading: t("交互"),
                         items: [
                             {
-                                name: "启用悬浮预览",
-                                desc: "鼠标停留在文件或目录上时显示内容预览。",
+                                name: t("启用悬浮预览"),
+                                desc: t("鼠标停留在文件或目录上时显示内容预览。"),
                                 control: { type: "toggle", key: "enableHoverPreview" }
                             },
                             {
-                                name: "悬浮预览文件夹笔记",
-                                desc: "鼠标停留在目录上时，预览该目录识别到的文件夹笔记。",
+                                name: t("悬浮预览文件夹笔记"),
+                                desc: t("鼠标停留在目录上时，预览该目录识别到的文件夹笔记。"),
                                 visible: () => this.plugin.settings.enableHoverPreview,
                                 control: { type: "toggle", key: "hoverPreviewFolderNotes" }
                             },
                             {
-                                name: "悬浮预览延迟",
-                                desc: "鼠标停留在文件或文件夹笔记上多久后显示预览；范围 350ms–2s，默认 500ms。",
+                                name: t("悬浮预览延迟"),
+                                desc: t("鼠标停留在文件或文件夹笔记上多久后显示预览；范围 350ms–2s，默认 500ms。"),
                                 visible: () => this.plugin.settings.enableHoverPreview,
                                 control: {
                                     type: "slider",
@@ -6809,16 +6811,16 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                     },
                     {
                         type: "group",
-                        heading: "分组",
+                        heading: t("分组"),
                         items: [
                             {
-                                name: "启用目录和文件分组",
-                                desc: "按指定属性分组；目录读取文件夹笔记中的属性。每组内部继续使用当前排序规则。",
+                                name: t("启用目录和文件分组"),
+                                desc: t("按指定属性分组；目录读取文件夹笔记中的属性。每组内部继续使用当前排序规则。"),
                                 control: { type: "toggle", key: "groupItems" }
                             },
                             {
-                                name: "分组属性",
-                                desc: "填写 Frontmatter 属性名，例如 category 或 project。支持逗号分隔值或 YAML 数组；普通多值只取第一个，只要任一值命中归档名称就归入“归档”。没有值的条目归入“其他”，并排在普通分组之后、归档之前。",
+                                name: t("分组属性"),
+                                desc: t("填写 Frontmatter 属性名，例如 category 或 project。支持逗号分隔值或 YAML 数组；普通多值只取第一个，只要任一值命中归档名称就归入“归档”。没有值的条目归入“其他”，并排在普通分组之后、归档之前。"),
                                 visible: () => this.plugin.settings.groupItems,
                                 control: {
                                     type: "text",
@@ -6827,8 +6829,8 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                 }
                             },
                             {
-                                name: "归档分组名称",
-                                desc: "每行一个用于识别归档的属性值，默认 archive；匹配后统一显示为“归档”，固定在底部并默认折叠。",
+                                name: t("归档分组名称"),
+                                desc: t("每行一个用于识别归档的属性值，默认 archive；匹配后统一显示为“归档”，固定在底部并默认折叠。"),
                                 visible: () => this.plugin.settings.groupItems,
                                 control: {
                                     type: "textarea",
@@ -6837,37 +6839,37 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                                 }
                             },
                             {
-                                name: "分组顺序",
-                                desc: "仅改变分组之间的顺序，不改变组内条目顺序。",
+                                name: t("分组顺序"),
+                                desc: t("仅改变分组之间的顺序，不改变组内条目顺序。"),
                                 visible: () => this.plugin.settings.groupItems,
                                 control: {
                                     type: "dropdown",
                                     key: "groupSortDirection",
-                                    options: { asc: "升序", desc: "倒序" }
+                                    options: { asc: t("升序"), desc: t("倒序") }
                                 }
                             }
                         ]
                     },
                     {
                         type: "group",
-                        heading: "图标",
+                        heading: t("图标"),
                         items: [
                             {
-                                name: "文件夹图标",
-                                desc: "可显示文件夹、右箭头（>）或完全隐藏。横向多列浏览保持静态图标；仅垂直树展开时切换打开状态或向下箭头。",
+                                name: t("文件夹图标"),
+                                desc: t("可显示文件夹、右箭头（>）或完全隐藏。横向多列浏览保持静态图标；仅垂直树展开时切换打开状态或向下箭头。"),
                                 control: {
                                     type: "dropdown",
                                     key: "folderIconStyle",
-                                    options: { folder: "文件夹", chevron: "右箭头（>）", none: "不显示" }
+                                    options: { folder: t("文件夹"), chevron: t("右箭头（>）"), none: t("不显示") }
                                 }
                             },
                             {
-                                name: "文件图标",
-                                desc: "可保留通用文件图标、按常见文件类型显示图标或完全隐藏。",
+                                name: t("文件图标"),
+                                desc: t("可保留通用文件图标、按常见文件类型显示图标或完全隐藏。"),
                                 control: {
                                     type: "dropdown",
                                     key: "fileIconStyle",
-                                    options: { file: "通用文件", type: "按文件类型", none: "不显示" }
+                                    options: { file: t("通用文件"), type: t("按文件类型"), none: t("不显示") }
                                 }
                             }
                         ]
@@ -6876,39 +6878,39 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
             },
             {
                 type: "page",
-                name: "文件夹笔记",
-                desc: "识别文件夹笔记、优先排序并展示其属性。",
+                name: t("文件夹笔记"),
+                desc: t("识别文件夹笔记、优先排序并展示其属性。"),
                 items: [
                     {
-                        name: "启用文件夹笔记",
-                        desc: "识别后的文件会使用书签图标并排在当前目录最前面；文件夹可显示该笔记的属性。",
+                        name: t("启用文件夹笔记"),
+                        desc: t("识别后的文件会使用书签图标并排在当前目录最前面；文件夹可显示该笔记的属性。"),
                         control: { type: "toggle", key: "showFolderNotes" }
                     },
                     {
-                        name: "直属同名文件",
-                        desc: "将文件夹直属、且基础名称与文件夹同名的文件识别为文件夹笔记，优先级最高。",
+                        name: t("直属同名文件"),
+                        desc: t("将文件夹直属、且基础名称与文件夹同名的文件识别为文件夹笔记，优先级最高。"),
                         visible: () => this.plugin.settings.showFolderNotes,
                         control: { type: "toggle", key: "folderNoteMatchFolderName" }
                     },
                     {
-                        name: "指定名称文件",
-                        desc: "仅在不存在直属同名文件时，使用下方指定名称匹配文件夹笔记。",
+                        name: t("指定名称文件"),
+                        desc: t("仅在不存在直属同名文件时，使用下方指定名称匹配文件夹笔记。"),
                         visible: () => this.plugin.settings.showFolderNotes,
                         control: { type: "toggle", key: "folderNoteMatchSpecialName" }
                     },
                     {
-                        name: "指定文件名",
-                        desc: "每行一个不含后缀名的文件名；默认包含 首页、Readme、Home，不区分英文大小写。",
+                        name: t("指定文件名"),
+                        desc: t("每行一个不含后缀名的文件名；默认包含 首页、Readme、Home，不区分英文大小写。"),
                         visible: () => this.plugin.settings.showFolderNotes && this.plugin.settings.folderNoteMatchSpecialName,
                         control: {
                             type: "textarea",
                             key: "folderNoteSpecialNamesText",
-                            placeholder: "首页\nReadme\nHome"
+                            placeholder: t("首页\nReadme\nHome")
                         }
                     },
                     {
-                        name: "文件夹笔记属性名称",
-                        desc: "每行一个 Frontmatter 属性。目录项会展示所有有值的属性，作为目录名称下方的次级信息。",
+                        name: t("文件夹笔记属性名称"),
+                        desc: t("每行一个 Frontmatter 属性。目录项会展示所有有值的属性，作为目录名称下方的次级信息。"),
                         visible: () => this.plugin.settings.showFolderNotes,
                         control: {
                             type: "textarea",
@@ -6920,117 +6922,117 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
             },
             {
                 type: "page",
-                name: "高级",
-                desc: "隐藏规则、列宽与右键菜单。",
+                name: t("高级"),
+                desc: t("隐藏规则、列宽与右键菜单。"),
                 items: [
                     {
-                        name: "隐藏规则",
-                        desc: "每行一条相对仓库根目录的 Glob 规则，支持 *、?、**。例如：附件/**、**/*.tmp、草稿/*.md；命中目录会同时隐藏其子项。",
+                        name: t("隐藏规则"),
+                        desc: t("每行一条相对仓库根目录的 Glob 规则，支持 *、?、**。例如：附件/**、**/*.tmp、草稿/*.md；命中目录会同时隐藏其子项。"),
                         control: {
                             type: "textarea",
                             key: "hiddenPatternsText",
-                            placeholder: "附件/**\n**/*.tmp"
+                            placeholder: t("附件/**\n**/*.tmp")
                         }
                     },
                     {
-                        name: "文件列最小宽度",
-                        desc: "拖动文件列时允许缩小到的最小宽度，默认 120px。",
+                        name: t("文件列最小宽度"),
+                        desc: t("拖动文件列时允许缩小到的最小宽度，默认 120px。"),
                         control: this.columnWidthSlider("columnMinWidth")
                     },
                     {
-                        name: "文件列最大宽度",
-                        desc: "拖动文件列时允许放大到的最大宽度，默认 400px。",
+                        name: t("文件列最大宽度"),
+                        desc: t("拖动文件列时允许放大到的最大宽度，默认 400px。"),
                         control: this.columnWidthSlider("columnMaxWidth")
                     },
                     {
-                        name: "显示扩展菜单项",
-                        desc: "关闭后仅显示本插件自带的右键操作，不再触发 file-menu 扩展事件添加的菜单项。",
+                        name: t("显示扩展菜单项"),
+                        desc: t("关闭后仅显示本插件自带的右键操作，不再触发 file-menu 扩展事件添加的菜单项。"),
                         control: { type: "toggle", key: "showExtensionMenuItems" }
                     }
                 ]
             },
             {
                 type: "page",
-                name: "日历",
-                desc: "设置日历位置、范围、视图和日期匹配规则。多条规则命中同一文件只会显示一次。",
+                name: t("日历"),
+                desc: t("设置日历位置、范围、视图和日期匹配规则。多条规则命中同一文件只会显示一次。"),
                 items: [
                     {
                         type: "group",
-                        heading: "展示",
+                        heading: t("展示"),
                         items: [
                             {
-                                name: "在文件列表底部展示日历",
-                                desc: "关闭后不在目录文件列表底部显示日历；独立日历视图始终可通过命令面板中的“打开独立日历视图”打开。",
+                                name: t("在文件列表底部展示日历"),
+                                desc: t("关闭后不在目录文件列表底部显示日历；独立日历视图始终可通过命令面板中的“打开独立日历视图”打开。"),
                                 control: { type: "toggle", key: "showCalendarAtBottom" }
                             },
                             {
-                                name: "命中文件显示图标",
-                                desc: "控制独立日历下方命中文件列表左侧是否显示文件图标。",
+                                name: t("命中文件显示图标"),
+                                desc: t("控制独立日历下方命中文件列表左侧是否显示文件图标。"),
                                 control: { type: "toggle", key: "calendarShowFileIcons" }
                             },
                             {
-                                name: "单个匹配时直接打开文件",
-                                desc: "日期只匹配一个文件时直接打开；在独立日历视图中，命中文件列表仍会保留展示。",
+                                name: t("单个匹配时直接打开文件"),
+                                desc: t("日期只匹配一个文件时直接打开；在独立日历视图中，命中文件列表仍会保留展示。"),
                                 control: { type: "toggle", key: "calendarOpenSingleMatch" }
                             },
                             {
-                                name: "限定查找目录",
-                                desc: "每行一个相对仓库根目录的目录。留空则查找整个仓库；只会匹配这些目录及其子目录中的文件。",
+                                name: t("限定查找目录"),
+                                desc: t("每行一个相对仓库根目录的目录。留空则查找整个仓库；只会匹配这些目录及其子目录中的文件。"),
                                 control: {
                                     type: "textarea",
                                     key: "calendarSearchPathsText",
-                                    placeholder: "项目/周报\n归档"
+                                    placeholder: t("项目/周报\n归档")
                                 }
                             }
                         ]
                     },
                     {
                         type: "group",
-                        heading: "匹配规则",
+                        heading: t("匹配规则"),
                         items: [
                     {
-                        name: "按创建日期匹配",
-                        desc: "匹配文件的创建日期（ctime）。",
+                        name: t("按创建日期匹配"),
+                        desc: t("匹配文件的创建日期（ctime）。"),
                         control: { type: "toggle", key: "calendarMatchCreatedDate" }
                     },
                     {
-                        name: "按修改日期匹配",
-                        desc: "匹配文件的修改日期（mtime）。",
+                        name: t("按修改日期匹配"),
+                        desc: t("匹配文件的修改日期（mtime）。"),
                         control: { type: "toggle", key: "calendarMatchModifiedDate" }
                     },
                     {
-                        name: "按文件属性匹配",
-                        desc: "读取指定属性的值。支持 YYYY-MM-DD、YYYY/MM/DD、YYYY.MM.DD 和 YYYY年M月D日；属性值中包含日期也能匹配。",
+                        name: t("按文件属性匹配"),
+                        desc: t("读取指定属性的值。支持 YYYY-MM-DD、YYYY/MM/DD、YYYY.MM.DD 和 YYYY年M月D日；属性值中包含日期也能匹配。"),
                         control: { type: "toggle", key: "calendarMatchFrontmatter" }
                     },
                     {
-                        name: "日期属性名称",
-                        desc: "每行一个文件属性名称。默认包含 updated、created、创建日期、修改日期和 date。",
+                        name: t("日期属性名称"),
+                        desc: t("每行一个文件属性名称。默认包含 updated、created、创建日期、修改日期和 date。"),
                         visible: () => this.plugin.settings.calendarMatchFrontmatter,
                         control: {
                             type: "textarea",
                             key: "calendarFrontmatterKeysText",
-                            placeholder: "updated\ncreated\n创建日期"
+                            placeholder: t("updated\ncreated\n创建日期")
                         }
                     },
                     {
-                        name: "按文件名匹配",
-                        desc: "匹配不含扩展名的文件名。日期格式可使用 YYYY、MM、DD；* 表示任意字符。",
+                        name: t("按文件名匹配"),
+                        desc: t("匹配不含扩展名的文件名。日期格式可使用 YYYY、MM、DD；* 表示任意字符。"),
                         control: { type: "toggle", key: "calendarMatchFilename" }
                     },
                     {
-                        name: "文件名日期格式",
-                        desc: "每行一条，例如 YYYYMMDD、YYYY年MM月DD日、YYYY-MM-DD*。无 * 时要求文件名完全相同。",
+                        name: t("文件名日期格式"),
+                        desc: t("每行一条，例如 YYYYMMDD、YYYY年MM月DD日、YYYY-MM-DD*。无 * 时要求文件名完全相同。"),
                         visible: () => this.plugin.settings.calendarMatchFilename,
                         control: {
                             type: "textarea",
                             key: "calendarFilenamePatternsText",
-                            placeholder: "YYYYMMDD\nYYYY年MM月DD日\nYYYY-MM-DD*"
+                            placeholder: t("YYYYMMDD\nYYYY年MM月DD日\nYYYY-MM-DD*")
                         }
                     },
                     {
-                        name: "命中文件类型",
-                        desc: "每行一个文件后缀名（不含点号），例如 md、pdf、canvas。留空则匹配所有文件类型。",
+                        name: t("命中文件类型"),
+                        desc: t("每行一个文件后缀名（不含点号），例如 md、pdf、canvas。留空则匹配所有文件类型。"),
                         control: {
                             type: "textarea",
                             key: "calendarFileExtensionsText",
@@ -7041,25 +7043,25 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                     },
                     {
                         type: "group",
-                        heading: "中国大陆节假日与调休",
+                        heading: t("中国大陆节假日与调休"),
                         items: [
-                            { name: "显示节假日", desc: "展示周末、节假日的休/班与名称；调休上班优先显示班。关闭仅隐藏标记，不影响工作日积木计算。", control: { type: "toggle", key: "calendarShowHolidays" } },
-                            { name: "允许联网更新", desc: "默认关闭。开启后可手动从 raw.githubusercontent.com 下载公开年度数据，不上传笔记内容。", control: { type: "toggle", key: "holidayOnlineUpdate" } },
+                            { name: t("显示节假日"), desc: t("展示周末、节假日的休/班与名称；调休上班优先显示班。关闭仅隐藏标记，不影响工作日积木计算。"), control: { type: "toggle", key: "calendarShowHolidays" } },
+                            { name: t("允许联网更新"), desc: t("默认关闭。开启后可手动从 raw.githubusercontent.com 下载公开年度数据，不上传笔记内容。"), control: { type: "toggle", key: "holidayOnlineUpdate" } },
                             {
-                                name: "离线数据与更新",
+                                name: t("离线数据与更新"),
                                 render: setting => {
                                     const cache = this.plugin.settings.holidayCache;
                                     const dates = Object.values(cache).map(entry => entry.updatedAt).sort();
-                                    setting.setDesc(`已收录：${this.plugin.holidays.availableYears.join("、")} 年。来源：holiday-cn（国务院公告整理，MIT）。${dates.length ? `最近更新：${new Date(dates[dates.length - 1]).toLocaleString()}。` : "尚无联网更新记录。"}跨年规则建议同时更新相邻年份；未发布或失败时保留旧数据。`);
+                                    setting.setDesc(t("已收录：{0} 年。来源：holiday-cn（国务院公告整理，MIT）。{1}跨年规则建议同时更新相邻年份；未发布或失败时保留旧数据。", [this.plugin.holidays.availableYears.join(", "), dates.length ? t("最近更新：{0}。", [new Date(dates[dates.length - 1]).toLocaleString(calendarLocale())]) : t("尚无联网更新记录。")]));
                                     let year = String(new Date().getFullYear());
-                                    setting.addText(text => text.setValue(year).setPlaceholder("更新年份").onChange(value => { year = value; }));
-                                    setting.addButton(button => button.setButtonText("更新该年数据").setDisabled(!this.plugin.settings.holidayOnlineUpdate).onClick(() => {
+                                    setting.addText(text => text.setValue(year).setPlaceholder(t("更新年份")).onChange(value => { year = value; }));
+                                    setting.addButton(button => button.setButtonText(t("更新该年数据")).setDisabled(!this.plugin.settings.holidayOnlineUpdate).onClick(() => {
                                         button.setDisabled(true);
                                         void this.plugin.updateHolidayData(Number(year)).then(() => {
-                                            new Notice(`${year} 年节假日数据已更新。`);
+                                            new Notice(t("{0} 年节假日数据已更新。", [year]));
                                             this.refreshSettingsTab();
                                         }).catch((error: unknown) => {
-                                            new Notice(error instanceof Error ? error.message : "更新失败，已保留离线数据。");
+                                            new Notice(error instanceof Error ? error.message : t("更新失败，已保留离线数据。"));
                                             button.setDisabled(!this.plugin.settings.holidayOnlineUpdate);
                                         });
                                     }));
@@ -7069,9 +7071,9 @@ class FolderColumnNavigatorSettingTab extends PluginSettingTab {
                     },
                     {
                         type: "group",
-                        heading: "创建每日笔记",
+                        heading: t("创建每日笔记"),
                         items: [{
-                            name: "创建规则",
+                            name: t("创建规则"),
                             render: setting => {
                                 setting.settingEl.addClass("fcn-daily-setting");
                                 renderDailyNoteEditor(setting.settingEl, this.plugin.settings.dailyNote, async config => {

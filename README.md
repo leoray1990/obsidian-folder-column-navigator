@@ -8,6 +8,12 @@ It is built for fast keyboard browsing: use `↑` `↓` `←` `→` to move, `En
 
 > This plugin works entirely inside your vault. It does not send data over the network and does not collect telemetry.
 
+## Interface language
+
+The interface follows Obsidian's language setting automatically: Chinese app languages use Simplified Chinese, and English and all other languages use English. Settings, commands, context menus, dialogs, notifications, calendar labels and daily-note creation controls are translated. Apply a language change using Obsidian's normal restart/reload flow; no separate plugin language setting is needed.
+
+Existing folder/file names, property keys and values, custom labels, hidden rules and saved creation templates are preserved. Third-party menu items and user note content retain the language provided by their source. Mainland China holiday names are translated for display only; the stored holiday data and schedule do not change.
+
 ## Compatibility
 
 - Minimum Obsidian version: **1.13.0**.
@@ -85,6 +91,13 @@ Open the view from the ribbon folder icon, or run **Open Folder Column Navigator
 ---
 
 # 中文说明
+
+## 界面语言
+
+插件自动跟随 Obsidian 的语言设置：中文语言使用简体中文，英文及其他语言回退英文。设置、命令、右键菜单、弹窗、提示、日历和日记创建编辑器均支持中英文。按 Obsidian 的正常流程重启或重载后应用语言切换，无需额外设置插件语言。
+
+已有文件和目录名、属性名与属性值、自定义显示名、隐藏规则和已保存的创建模板保持原样。第三方菜单项及笔记内容由其来源决定语言；中国大陆节日名称只翻译显示文案，不修改缓存数据或放假安排。
+
 ## 兼容性
 
 - 最低 Obsidian 版本：**1.13.0**。
