@@ -6,7 +6,7 @@ Folder Column Navigator is a Finder-style, multi-column file navigator for Obsid
 
 It is built for fast keyboard browsing: use `↑` `↓` `←` `→` to move, `Enter` to open folders or notes, and `Space` for the context menu. Type directly in the focused folder area or file column to filter—no search box required. Filtering supports English, numbers, Chinese characters, pinyin initials, full pinyin, and mixed pinyin; for example, both `nh` and `nih` can match “你好”. Opening a note keeps keyboard focus in the navigator, so you can continue browsing immediately.
 
-> This plugin works entirely inside your vault. It does not send data over the network and does not collect telemetry.
+> Your notes are processed locally, and the plugin collects no telemetry. Online holiday updates are disabled by default. Only after you enable them and manually request an update does the plugin download a public JSON file for the specified year from GitHub; this request does not upload note content, file names, or vault paths.
 
 ## Interface language
 
@@ -22,18 +22,21 @@ Existing folder/file names, property keys and values, custom labels, hidden rule
 
 ## Highlights
 
-- Two layouts: a left-hand root-folder list or root folders displayed as top tags.
-- Finder-style column browsing: opening a folder adds a column for its direct children.
-- Optional vertical tree mode: after the configured maximum number of horizontal columns, deeper levels expand as a tree inside the last column (default maximum: 4 columns).
-- Keyboard-first navigation across root folders, file columns, and filterable context menus.
-- Per-column pinyin-aware filtering for English, numbers, Chinese characters, initials, full pinyin, and mixed pinyin queries.
-- File-list-like sorting, item metadata, configurable icons, font sizes, widths, and hiding rules.
-- A collapsible bottom calendar with month/year views and week numbers; click a day to open files matched by file dates, frontmatter dates, or filename date patterns.
-- Built-in file and folder context menus, plus compatibility with other plugins through Obsidian's `file-menu` event.
-- Same-folder multi-selection, batch moving/deletion/property editing, column-background drops, and persistent drag-defined ordering.
-- Immediate duplicate-name validation when creating or renaming files and folders.
+- **Browse in context:** top tabs or a left sidebar, custom folder shortcuts, shared drag ordering, remembered column widths, same-column navigation and an optional vertical tree for deep folders.
+- **Stay on the keyboard:** arrow-key navigation, `Enter` to open and `Space` for menus. Type directly to filter by English, numbers, Chinese, pinyin initials, full pinyin or mixed pinyin; menus can be filtered too.
+- **Give folders a home page:** recognize same-name or configured folder notes, always place them first, preview them on hover, and display aliases, properties and dates without renaming actual files.
+- **Organize with properties:** sort and pin groups, keep unassigned items in Other, collapse Archive at the bottom, and drag items into groups to update their grouping property.
+- **Find notes by date:** embedded or separate calendar with month/week/year views, configurable folder and file-type scope, four date-matching rules, and Mainland China holidays and make-up workdays.
+- **Build daily-note paths:** drag date and literal blocks, use presets or advanced templates, include Friday or the last working day of the week, and create Markdown, Canvas or Base files with a confirmation dialog. Markdown supports core Templates and Templater.
+- **Manage files in place:** multi-selection, drag-to-move with hover expansion, custom ordering, batch property editing, folder-note creation and context menus on items or directory backgrounds. Name conflicts are checked while typing.
+- **Make it yours:** Simple grid, Colorful and Journal themes, Style Settings integration, optional rainbow folders, wrapping with a line limit, display properties, icons, separators, Glob hide rules and adjustable overlay opacity.
+- **Use Chinese or English:** the interface follows Obsidian's language setting; existing note content, names and saved rules are preserved.
 
 ## Screenshots / 截图
+
+All screenshots use a dedicated demo vault with simulated folders, notes and properties. No personal or work-vault content is included.
+
+以下截图均来自独立演示仓库，目录、笔记和属性为模拟数据，不含真实个人或工作笔记。
 
 ### Top-level tags / 顶部一级目录标签
 
@@ -45,13 +48,13 @@ Use the top layout to dedicate the entire lower area to the file tree while keep
 
 Keep root folders ordered on the left, with the selected folder and its child columns visible together.
 
-![Left-side root-folder navigation](images/left-layout-navigation.png)
+![Left-side navigation in the simulated demo vault](images/demo-left-navigation.png)
 
 ### Finder-style columns / Finder 风格多列浏览
 
 Open each folder in its own column to retain the complete path and browse several levels in context.
 
-![Multiple folder columns open side by side](images/finder-multi-column.png)
+![Four folder columns in the simulated demo vault](images/demo-finder-columns.png)
 
 ### Pinyin filtering / 拼音筛选
 
@@ -65,17 +68,19 @@ File and folder actions are available from the context menu, which also supports
 
 ![Folder context menu with keyboard filtering](images/context-menu.png)
 
-### Bottom calendar / 底部日历
+### Calendar and date-matched files / 日历与日期文件
 
-Expand the calendar at the bottom of the navigator to browse by month or year. Clicking a date opens its matching files directly, or presents a picker when there are multiple matches.
+Embed the calendar below the navigator or open it as a separate view. Switch between month, week and year modes, then select a date to browse matching files. Mainland China holidays and make-up workdays are marked Off / Work.
+
+![Calendar week view with holiday markers and matching demo notes](images/calendar-date-files.png)
 
 ## Installation
 
 ### Community Plugins
 
-Once the plugin is available in the Community Plugins directory:
+Install from the [official Obsidian plugin page](https://community.obsidian.md/plugins/folder-column-navigator), or find it inside Obsidian:
 
-1. Open **Settings → Community plugins**.
+1. Open **Settings → Community plugins → Browse**.
 2. Search for **Folder Column Navigator**.
 3. Install and enable it.
 
@@ -134,17 +139,19 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 - 拖拽调整一级目录顺序。
 - 在设置中调整一级目录顺序或隐藏一级目录。
 - 添加任意层级的自定义目录，并为它设置独立显示名称。
+- 一级目录与自定义目录在同一列表中拖拽排序；添加目录时支持仓库目录补全。自定义显示名称优先于文件夹笔记的 aliases。
 - 使用“定位当前笔记”跳转并展开当前编辑器笔记所在的目录链。
 
 ### Finder 风格多列文件树
 
-- 单击文件夹，在右侧新增一列展示它的直属子项。
+- 单击或按 `Enter` 打开文件夹：根据配置在右侧新增子列，或从指定列开始在当前列打开；同列打开支持返回上级并恢复目录焦点。
 - 可选开启“深层目录纵向展开”：超过配置的最大水平列数后，后续层级会在最后一列以内按树形垂直展开，默认最多保留 4 列水平目录。
 - 垂直目录树默认保留同级展开状态，也可以开启“展开时折叠兄弟目录”切换为单分支浏览。
 - 单击文件，直接打开笔记；已打开的笔记会复用现有标签页。
-- 每一列保留返回上一级入口，并能独立拖动调整宽度。
+- 每一列保留返回上一级入口，并能独立拖动调整宽度；各目录的列宽会被记住。
 - 文件列宽度默认按内容计算；可在设置中设定最小和最大宽度。
 - 在一级目录之间切换后，会记住该目录上次展开到的列和焦点位置。
+- 可配置打开目录后的横向定位：当前列、新展开列靠左或靠右、保留左侧一列/两列，或关闭自动滚动；上下方向键移动不触发点击定位。双击某列可水平滚动使其完整可见。
 - 移动文件或目录后，会自动定位并展开目标目录，保留键盘焦点以便继续操作。
 - 文件或目录也可直接拖到目标目录；悬停约半秒会自动选中并展开该目录，再松开完成移动。
 - 开启分组后，可将文件或目录拖到“归档”分组；松开后会为文件或文件夹笔记增加归档值。拖到其他分组则更新当前分组值。
@@ -168,14 +175,33 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 - 文件图标：通用图标、按常见文件类型显示或不显示。
 - 隐藏文件扩展名；不会影响右侧可单独关闭的类型缩写。
 - 目录与文件名称左对齐。
-- 文件夹笔记优先显示：当目录内存在与目录同名的文件时，将其识别为文件夹笔记，置顶并显示书签图标。
-- 文件夹右键菜单可直接创建与文件夹同名的 Markdown 文件夹笔记；已有文件夹笔记时会提示，避免重复创建。
+- 长名称换行及最大行数、文件夹笔记和文件的属性详情、是否显示属性名，以及创建/修改日期。
+- 一级目录、文件树目录和文件可分别启用属性显示名，默认取第一个 `aliases`，也可指定其他属性；只改变显示，不重命名实际文件。
+
+### 文件夹笔记与悬浮预览
+
+- 两种识别规则可分别开启：直属同名文件优先；没有同名文件时，再匹配配置的名称（默认包括 `首页`、`Readme`、`Home`）。
+- 文件夹笔记始终位于当前目录最前面，不参与普通分组；即使其他分组置顶，也不会排到它前面。书签图标随文件夹图标开关显示或隐藏。
+- 文件夹可显示其文件夹笔记的属性，文件也可显示自身属性与日期；可单独控制是否展示属性名。
+- 文件夹右键菜单可创建与目录同名的 Markdown 文件夹笔记；已有笔记时提示，避免重复创建。
+- 悬停文件预览笔记内容，悬停目录可预览其文件夹笔记；支持总开关、目录预览开关、350ms–2s 延迟，以及预览背景不透明度。
+
+### 属性分组与归档
+
+- 按配置的 Frontmatter 属性（例如 `group`、`category`）分组，目录读取对应文件夹笔记的属性，组内保留现有排序规则。
+- 支持逗号分隔值或 YAML 数组：普通分组只取第一个值；只要包含 `archive` 或配置的归档值，就统一归入底部“归档”，默认折叠，可展开/收起。
+- 分组可升序、倒序或右键置顶；缺少分组值的“其他”排在普通分组后、归档前。若当前目录没有有效分组信息，则不显示分组标题；文件夹笔记不参与这一判断。
+- 拖到普通分组或使用“设置分组…”菜单，会更新普通分组值并移除归档标记；拖到归档则保留普通分组值并补充归档标记。目录的修改写入其已有 Markdown 文件夹笔记。
 
 ### 主题
 
 插件内置三套视觉主题：简洁分格（默认）、彩色风格和手帐风格。可在插件的“设置 → 显示 → 主题”中立即切换，插件保存的主题选择会在启动时优先恢复，不会被旧的 Style Settings class 覆盖。彩色风格会按目录路径稳定分配识别色，并同步用于顶部标签、目录列、分组、右键菜单和日历；可从彩虹、海盐、森野、晚霞四套协调配色中选择。手帐风格使用纸张、贴纸和手帐卡片的视觉语言，覆盖文件树、操作按钮、右键菜单和日历。
 
+也支持 Style Settings；彩虹目录可独立关闭，条目分割线、右键菜单和悬浮预览的背景不透明度均可配置。
+
 ### 底部日历与日期文件
+
+可作为导航底部的可折叠区域，也可独立打开；支持月、周、年视图、指定查找目录与文件类型、单个/多个命中标记，以及所选日期下的文件列表。
 
 日历首次可见且仓库加载完成后，分批建立内存日期索引，并显示更新提示；建索引和大批量排序会定期让出界面线程。多个日历视图共享索引，翻月/切周只查询对应日期，不重复匹配全库。文件创建、修改、属性变化、重命名和删除按受影响文件增量更新；修改匹配范围、隐藏规则或日期匹配规则才会分批重建，修改外观或每日笔记模板不会重建。索引不写入仓库，重载插件后会重新建立。
 
@@ -193,7 +219,7 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 目录与名称支持两种共用规则的编辑方式：
 
 - **积木组合**：目录组件库分为“基础”“日期相关”“固定文字”；基础目录和 `/` 归入“基础”。点击或拖入组件，通过拖拽或左右移动按钮排序；悬停组件可在右上角删除。目录分隔符显示为 `/`，与连接符、下划线、空格一样不可编辑；普通固定文字支持输入，但不能包含目录分隔符、模板括号或文件名非法字符，不提供文件/目录自动提示。基础目录单独支持仓库目录补全。日期组件可选择“选中日期”“周开始”“周结束”“今天（创建当天）”，格式只允许在同类日期单位内通过下拉切换；复杂格式在高级模板编辑。文件类型独立选择 Markdown、Canvas、Base，名称无需填写扩展名。
-- **高级模板**：自由编辑固定文字和日期变量，例如 `日记/{{date:YYYY}}/{{date:MM}}/{{weekStart:YYYY-MM-DD}}-{{weekEnd:YYYY-MM-DD}}`，名称为 `{{date:YYYY-MM-DD}}`。支持 `date`（选中日期）、`weekStart`、`weekEnd`、`today`（创建当天）；周一为周开始日，与日历一致，周数使用 ISO 周数 `WW`。
+- **高级模板**：自由编辑固定文字和日期变量，例如 `日记/{{date:YYYY}}/{{date:MM}}/{{weekStart:YYYY-MM-DD}}-{{weekEnd:YYYY-MM-DD}}`，名称为 `{{date:YYYY-MM-DD}}`。支持 `date`（选中日期）、`weekStart`、`weekEnd`、`weekFriday`、`weekLastWorkday`、`today`（创建当天）；周一为周开始日，与日历一致，周数使用 ISO 周数 `WW`。
 
 提供按年月、平铺日期、按年月周三种预置方案，应用后可继续任意编辑。规则编辑器支持选择测试日期、实时预览完整路径，点击“保存创建规则”后生效；未保存的规则草稿不会改变创建行为，启用开关单独即时保存。
 
@@ -224,7 +250,9 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 
 指定正文模板时，模板内容原样作为基础，不额外插入 `date` 属性，以免破坏已有 frontmatter；日历日期关联仍会保存。不使用模板时继续生成默认 `date` 属性。Canvas、Base 暂不应用 Markdown 正文模板，但保留所选模板配置。缺少模板、插件未启用、读取或执行失败都会提示，不覆盖已有文件。
 
-新安装默认不在文件列表底部展示日历，可在设置中开启，或通过命令打开独立日历视图。开启后底部“日历”栏可点击展开/收起。日历提供月视图与年视图、上一期/下一期导航和左侧周序号。默认通过文件属性和文件名匹配日期，创建/修改时间匹配默认关闭。
+新安装默认不在文件列表底部展示日历，可在设置中开启，或通过命令打开独立日历视图；独立视图可与文件导航分别展示。底部“日历”栏可点击展开/收起。日历提供月、周、年视图、上一期/下一期导航和左侧周序号。默认通过文件属性和文件名匹配日期，创建/修改时间匹配默认关闭。
+
+可限定查找目录、后缀类型及匹配规则。选中日期有独立样式，单个与多个命中有不同标记；默认选中今天并展示当天文件。文件列表图标和“只有一个匹配时直接打开”可单独配置，独立视图下的列表仍保留。
 
 点击某一天后，插件会在仓库的可见文件中查找匹配项：
 
@@ -232,7 +260,7 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 - 文件属性中的日期；默认读取 `updated`、`created`、`创建日期`、`修改日期`、`date`。属性值支持 `YYYY-MM-DD`、`YYYY/MM/DD`、`YYYY.MM.DD`、`YYYY年M月D日`，也支持在更长文本中包含这些日期。
 - 文件名日期格式；默认包含 `YYYYMMDD`、`YYYY年MM月DD日`、`YYYY-MM-DD*`。其中 `YYYY`、`MM`、`DD` 代表所点日期，`*` 代表任意字符；例如 `YYYY-MM-DD*` 匹配以该日期开头的文件名。
 
-四类匹配规则和两组规则列表都可在设置的“日历”页独立调整。多个规则命中同一文件时只保留一项；仅命中一个文件会直接打开，命中多个文件则显示选择列表。
+四类匹配规则和对应的规则列表均可在“日历”设置中独立调整。多个规则命中同一文件时只保留一项；可配置单个匹配直接打开，底部日历的多个匹配通过列表弹窗选择，独立日历在下方展示文件列表。
 
 ### 隐藏规则
 
@@ -262,7 +290,8 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 | 操作 | 效果 |
 | --- | --- |
 | 单击一级目录 | 切换当前目录并显示其内容 |
-| 单击文件夹 | 在右侧展开子列 |
+| 单击文件夹 | 根据配置新增子列、当前列打开或纵向展开 |
+| 双击某列 | 水平滚动使该列完整可见 |
 | 单击文件 | 打开文件 |
 | 拖拽一级目录 | 调整一级目录顺序 |
 | 拖拽文件/目录到目标目录 | 悬停后自动展开目标目录，松开后移动 |
@@ -272,6 +301,8 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 | `Cmd` / `Ctrl` + 单击 | 在同目录选择中增加或移除项目 |
 | 拖拽列分割线 | 调整左侧目录列或文件列宽度 |
 | 右键文件/文件夹 | 打开上下文菜单 |
+| 右键一级目录区域空白处 | 打开仓库根目录菜单（顶部、左侧模式均支持） |
+| 右键任意文件列标题、列表留白或空目录提示 | 打开该列对应目录的菜单，不使用先前选中的文件 |
 
 ### 键盘
 
@@ -293,6 +324,8 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 
 文件夹菜单提供：新建笔记、新建子文件夹、新建白板、新建数据库、移动、删除等操作。删除目录前必须在确认弹窗中再次确认。
 
+还可创建文件夹笔记、设置分组、重命名目录或将目录添加到一级导航；顶部标签中的目录同样支持自己的目录菜单。在一级目录区域空白处右键作用于仓库根目录，在任意文件列的标题、空白或空目录提示处右键作用于该列目录，不主动滚动或改变其他列。
+
 同目录选中多个项目后，菜单提供批量移动、新建同级文件夹和确认删除；仅当所选项目全部为 Markdown 文件时，额外显示“批量设置属性”。列表属性会追加并去重，文本、数字、复选框、日期和日期时间会校验现有属性类型，修改完成后展示逐文件结果。
 
 插件会兼容其他插件加入的标准文件菜单项；如需精简菜单，可在“高级”设置中关闭“显示扩展菜单项”，关闭后仍保留本插件自带操作。菜单打开后同样支持输入字母/数字筛选、方向键移动和 `Enter` 执行。
@@ -301,7 +334,7 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 
 ## 设置说明
 
-设置页按 **导航**、**显示**、**高级**、**日历** 四个分类页面整理，并支持 Obsidian 设置搜索。
+设置页按 **导航**、**显示**、**文件夹笔记**、**高级**、**日历** 五个分类页面整理，并支持 Obsidian 设置搜索。
 
 | 设置 | 作用 |
 | --- | --- |
@@ -312,7 +345,9 @@ Obsidian 自带文件列表适合查看完整目录树，但在层级较深的�
 | 一级目录名称字号 | 调整左侧模式下一级目录的字号 |
 | 文件树文件名字号 | 同时调整文件树中的目录和文件字号；顶部模式下也控制一级目录标签 |
 | 文件树名称左对齐 | 文件不显示图标时保留图标位置，使其与文件夹名对齐 |
-| 文件夹笔记优先显示 | 将同名文件夹笔记置顶并使用书签图标 |
+| 文件夹笔记优先显示 | 同名或指定名称识别，始终置于普通分组前；图标随文件夹图标开关 |
+| 属性显示名与详情 | 一级目录、树中目录、文件可分别启用 aliases/指定属性显示名；详情可显示属性和日期 |
+| 长名称换行 | 自动换行及最大行数，默认最多 2 行 |
 | 隐藏文件后缀名 | 只隐藏显示名称的后缀，不影响类型缩写设置 |
 | 隐藏规则 | 按 Glob 规则隐藏文件和目录 |
 | 文件列最小/最大宽度 | 限制拖拽文件列时的宽度范围 |
@@ -349,30 +384,70 @@ Folder Column Navigator adds a Finder-style multi-column navigator to Obsidian. 
 
 ## Key features
 
-- Keyboard-first navigation with `↑` `↓` `←` `→`, `Enter`, and `Space`; focus remains in the navigator after opening a note.
-- Pinyin-aware quick filtering: type directly in the focused area to match English, numbers, Chinese, initials, full pinyin, or mixed pinyin.
-- Left-side root-folder navigation or top-level folder tags.
-- Finder-style multi-column folder browsing with resizable columns.
-- Single-click file opening while keeping keyboard focus in the navigator.
-- After moving a file or folder, automatically reveal and expand its destination folder while retaining keyboard focus.
-- Drag files or folders onto a destination folder; hovering for about half a second reveals and expands it before drop.
-- Name, modified-time, and created-time sorting in ascending or descending order.
-- Optional property-based grouping; configurable archive values are shown as a collapsed “归档” group at the bottom.
-- Dragging a file or folder onto “归档” adds the archive marker to its grouping property; dragging it onto another group updates the active group.
-- Configurable item metadata, icons with open/closed folder states, font sizes, folder-note priority, extension visibility, and Glob-based hiding.
-- Three built-in visual themes—Simple grid, Colorful, and Hand-account—are available in Settings → Display → Theme. The saved plugin selection takes precedence during startup. Colorful keeps a stable directory accent across navigation and columns, with four coordinated palettes: Rainbow, Ocean, Forest, and Sunset; Hand-account uses a paper-and-sticker journal treatment across lists, menus, controls, groups, and the calendar.
-- Create a same-name Markdown folder note from any folder's context menu, with duplicate detection.
-- Optional hover previews for files and folder notes, with a configurable delay.
-- Filterable context menus for files and folders.
-- Immediate duplicate-name validation when creating or renaming files and folders.
+### Keyboard flow and pinyin filtering
+
+- Use arrows to browse, `Enter` to open and `Space` to open or close the context menu. Opening a note keeps focus in the navigator.
+- Type directly in the focused navigation area or column—no search box required. Supports English, numbers, Chinese, pinyin initials, full pinyin and mixed pinyin; `xtsj` can match “系统设计”.
+- Context menus support the same filtering, arrow-key selection and `Enter`. `Esc` clears a filter first, then closes an unfiltered menu; `Backspace` removes a filter character.
+
+### Multi-column navigation that adapts to depth
+
+- Choose top tabs or a left sidebar. Add custom folder shortcuts with display names and path suggestions; drag top-level and custom entries into one shared order.
+- Keep parent and child folders visible together, resize columns and remember widths per folder. Sort by name, modified date, created date or a persistent custom drag order.
+- Set a maximum number of horizontal columns and expand deeper levels vertically. Alternatively, open folders in the current column from a configurable starting column; click and `Enter` share the same behavior.
+- Choose horizontal alignment after opening a folder: current/new column, one or two preceding columns, new column aligned right, or no automatic scrolling. Up/Down navigation does not trigger click alignment. Double-click a column to reveal its full width.
+- Restore a top-level folder's previous expanded path and focus when returning to it.
+
+### Folder home pages, display names and previews
+
+- Recognize a direct same-name folder note first, then optional names such as Home, Readme or 首页. These two rules are independently configurable.
+- Folder notes stay first, even before pinned groups, and can be created from a folder's context menu. Folders can display their note's properties.
+- Independently enable property-based display names for top-level folders, tree folders and files. Use the first alias by default or another property; a custom shortcut label takes precedence. Actual file names do not change.
+- Show property values, optional property names, and creation/modification dates below names. Wrap long names with a configurable line limit.
+- Hover over files to preview content, or folders to preview their folder notes. Configure preview enablement, folder-note previews, delay (350ms–2s) and background opacity.
+
+### Property groups and archives
+
+- Group by a frontmatter property; folders read their folder note. Keep the existing sort order within each group, and sort groups ascending/descending or pin them through their menu.
+- Accept comma-separated values or YAML lists. Use the first ordinary value; any configured archive value places the item in Archive, collapsed at the bottom. Other follows ordinary groups and precedes Archive.
+- Hide group headings when no regular child has grouping information. Folder notes are not grouped and do not trigger grouping by themselves.
+- Drag an item to a regular group, or use Set group, to replace its regular group and remove archive markers. Drop onto Archive to add the archive marker while keeping the ordinary group value. Folder updates require an existing Markdown folder note.
+
+### Calendar, holidays and date-matched files
+
+- Use a collapsible calendar below the navigator or a separate calendar view alongside it. Switch between month, week and year modes; the month grid keeps six weeks and the week grid shows seven days.
+- Match creation time, modification time, frontmatter dates and file-name date patterns independently. Limit search folders and extensions; duplicate matches appear once.
+- Select today by default, distinguish selected/single-match/multiple-match dates, and browse matching files below the separate calendar or in a picker from the embedded calendar. File icons and opening a single match directly are configurable.
+- Display Mainland China holidays, weekends and make-up workdays using Off/Work markers and holiday names. Includes offline data for 2025–2027; online updates are opt-in and manually triggered.
+- Date indexing is shared, batched and incremental; switching dates reuses indexed results. Matching lists use virtual scrolling instead of rendering every file at once.
+
+### Daily-note paths built from blocks
+
+- Click an empty date to create a note, or Cmd/Ctrl-click a matched date; the file list also has a creation entry. Confirm the generated path and edit the name before creating and opening the file.
+- Start from year/month, flat-date or year/month/week presets. Drag blocks for the base folder, separators, literal text, year/month/day/week, week start/end, Friday or the last working day of the week. Advanced templates provide free-form editing and a live path preview.
+- Create Markdown, Canvas or Base files. Markdown supports Obsidian core Templates variables or native Templater creation; Templater must be enabled and its scripts should be trusted.
+- Core template `date` uses the selected calendar day and `time` uses creation time. Templater date functions retain their original semantics; for a past date, derive it from the generated note title rather than assuming `tp.date.now()` uses the selected day.
+- Working-day blocks use Mainland China holiday schedules. Missing yearly data or a week with no working days produces a clear error rather than an incorrect fallback date.
+- Newly created notes remain associated with the selected calendar date, including renamed notes and Canvas/Base files; existing creation rules are not rewritten by a language change.
+
+### File operations and flexible appearance
+
+- Move files or folders by menu or drag-and-drop; hovering over a target folder expands it. Multi-select same-folder items for batch moving, deletion or Markdown property editing.
+- Open item-specific menus, the vault-root menu from blank top/left navigation space, or the corresponding directory menu from any file column's header, background or empty state. Standard `file-menu` additions can be disabled.
+- Check duplicate names while creating or renaming files and folders, before confirming the operation.
+- Choose Simple grid, Colorful or Journal in Settings → Appearance → Theme, with Style Settings support. Colorful offers Rainbow, Sea salt, Forest and Sunset palettes; rainbow folder decoration has its own switch.
+- Configure fonts, icons (including open/closed vertical-tree folders), extensions, alignment, separators, Glob hide rules, and context-menu/preview opacity.
+- The five settings categories—Navigation, Appearance, Folder notes, Advanced and Calendar—support Obsidian settings search. The interface follows Obsidian's Chinese/English language setting.
 
 ## Quick use
 
-Open **Folder Column Navigator** from the ribbon or command palette. Click a folder to open its child column; click a file to open it. Use arrow keys to move, `Enter` to open, `Space` for the context menu, and type to filter the focused area. `Backspace` and `Esc` clear the active filter.
+Open **Folder Column Navigator** from the ribbon or command palette. Click a folder or press `Enter` to browse according to your column settings; click a file to open it. Use arrows to move, `Space` for the context menu, and type to filter the focused area. `Backspace` removes one filter character; `Esc` clears the filter before closing a menu.
 
 ## Privacy
 
-The plugin itself makes no network requests and collects no telemetry. Settings and daily-note date/path associations are stored in the current vault's plugin data. Optional Templater templates run through that third-party plugin and can execute user scripts, including network requests and file operations; use trusted templates only.
+The plugin processes notes locally and collects no telemetry. Online holiday updates are disabled by default. Enabling the option alone does not make a request: you must also manually update a specified year. The plugin then sends a GET request to `https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/<year>.json` to download public holiday data. This request does not upload note content, file names, or vault paths. No holiday update requests are made at startup or while navigating the calendar.
+
+Settings, cached holiday updates, and daily-note date/path associations are stored in the current vault's plugin data. Optional Templater templates run through that third-party plugin and can execute user scripts, including network requests and file operations; use trusted templates only.
 
 ## Third-party software
 
